@@ -649,7 +649,7 @@ textarea:focus {
   display: grid;
   grid-template-rows: auto auto minmax(0, auto) minmax(0, 1fr);
   overflow: auto;
-  background: white;
+  background: var(--panel);
 }
 
 .settings-header {
