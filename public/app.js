@@ -577,21 +577,22 @@ function currentRecipientId() {
 }
 
 async function loadMe() {
-  const { user } = await api("/api/me");
+  const { user, rememberToken } = await api("/api/me");
   if (user) {
+    storeRememberSession(user, rememberToken);
     setAuthenticated(user);
     await loadUsers();
     return;
   }
 
   const userId = localStorage.getItem("vioraRememberUserId");
-  const rememberToken = localStorage.getItem("vioraRememberToken");
+  const storedRememberToken = localStorage.getItem("vioraRememberToken");
 
-  if (userId && rememberToken) {
+  if (userId && storedRememberToken) {
     try {
       const remembered = await api("/api/remember", {
         method: "POST",
-        body: JSON.stringify({ userId, rememberToken })
+        body: JSON.stringify({ userId, rememberToken: storedRememberToken })
       });
       setAuthenticated(remembered.user);
       await loadUsers();
@@ -611,6 +612,7 @@ async function loadMe() {
     await loadUsers();
   } catch {
     setAuthenticated(null);
+    setNotice(els.authNotice, "هذا المتصفح أو الدومين لا يملك جلسة محفوظة. سجّل الدخول مرة واحدة وسيتم حفظ الدخول بعدها.", true);
   }
 }
 
