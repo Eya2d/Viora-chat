@@ -1,5 +1,5 @@
 {
-  "name": "viora-chat",
+  "name": "viora",
   "version": "1.0.0",
   "description": "Viora chat - WhatsApp-style chat app with media sharing.",
   "main": "server.js",
