@@ -914,6 +914,7 @@ textarea:focus {
   min-height: 100%;
   padding: 24px;
   text-align: center;
+  height: max-content;
 }
 
 .document-view-card small {
