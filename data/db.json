@@ -8,7 +8,12 @@
       "deviceId": "a99271ea36533ff7514f9636553468b0fab2114261e087fa",
       "passwordHash": "81261ccd99029bcb19ff21c197307ab6:2161d2ebc057d1cfa5e9560b4efabfc4164879a71fbe8acd199cbae250026514191afd02ffdce1459fc8936d15433a561b55c5a38fa49dc8baeac76c7ed42970",
       "avatar": "",
-      "createdAt": "2026-07-09T09:23:59.519Z"
+      "createdAt": "2026-07-09T09:23:59.519Z",
+      "rememberTokenHash": "0d2b41587b5c7e48f2dc2ccc60dd15d5088519d8d63df318da234c4810f4eabd",
+      "rememberedAt": "2026-07-09T19:05:59.358Z",
+      "deviceIds": [
+        "a99271ea36533ff7514f9636553468b0fab2114261e087fa"
+      ]
     }
   ],
   "sessions": [
@@ -16,32 +21,17 @@
       "token": "7c3294ddeeef5e5c91626fa43996d14adc01577db26603d010cc32717389ae6f",
       "userId": "2e68acad-f597-4ed5-acc2-3159a255d2e2",
       "expiresAt": 1786181077477
-    }
-  ],
-  "messages": [
-    {
-      "id": "8128544c-6644-4dc6-839a-a97ecae15924",
-      "userId": "2e68acad-f597-4ed5-acc2-3159a255d2e2",
-      "author": "إياد 455",
-      "username": "554",
-      "text": "اهلا",
-      "media": null,
-      "createdAt": "2026-07-09T09:24:50.764Z"
     },
     {
-      "id": "74ed08f1-d98e-4117-a0dc-959342fe2010",
+      "token": "d6ec768a70c5db4a975920f6b6c19679099dba9a566d1dc3ec8c53fc6aa7785e",
       "userId": "2e68acad-f597-4ed5-acc2-3159a255d2e2",
-      "author": "إياد 455",
-      "username": "554",
-      "text": "",
-      "media": {
-        "type": "image",
-        "mime": "image/jpeg",
-        "name": "pinterest_f3c5396ec94aa4aa47564e95d0393c06_1_.jpg",
-        "url": "/uploads/1783589102089-0dd6f4525e07c35d-pinterest_f3c5396ec94aa4aa47564e95d0393c06_1_.jpg",
-        "size": 49055
-      },
-      "createdAt": "2026-07-09T09:25:02.091Z"
+      "expiresAt": 1786197272809
+    },
+    {
+      "token": "c08eabf2e0058fba161d702a3829c9c99bd5477d510a9c2a13075e1a7d5105d5",
+      "userId": "2e68acad-f597-4ed5-acc2-3159a255d2e2",
+      "expiresAt": 1786197957873
     }
-  ]
+  ],
+  "messages": []
 }
