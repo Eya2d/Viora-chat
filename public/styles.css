@@ -970,7 +970,8 @@ textarea:focus {
 @media (max-width: 760px) {
   .phone-shell {
     width: 100vw;
-    height: 100vh; /*dvh*/
+    height: 100dvh;
+    max-height: 100vh;
     box-shadow: none;
   }
 
