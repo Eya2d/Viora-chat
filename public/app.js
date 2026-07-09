@@ -410,14 +410,18 @@ function closeEditModal() {
 
 function closeViewerModal() {
   els.viewerModal.classList.add("hidden");
+  els.messageOverlay.classList.add("hidden");
   els.viewerBody.textContent = "";
   els.viewerOpenLink.removeAttribute("href");
+  els.viewerOpenLink.removeAttribute("download");
 }
 
 async function openAttachmentViewer(media) {
   els.viewerTitle.textContent = media.name || "عرض الملف";
   els.viewerOpenLink.href = media.url;
+  els.viewerOpenLink.download = media.name || "attachment";
   els.viewerBody.textContent = "";
+  els.messageOverlay.classList.remove("hidden");
   els.viewerModal.classList.remove("hidden");
 
   if (media.type === "image") {
@@ -457,7 +461,7 @@ async function openAttachmentViewer(media) {
   card.innerHTML = `
     <strong>${escapeHtml(media.name || "ملف")}</strong>
     <small>${escapeHtml(media.mime || "ملف")} · ${formatSize(media.size)}</small>
-    <a href="${escapeHtml(media.url)}" target="_blank" rel="noopener">فتح الملف</a>
+    <span>لا يمكن عرض هذا النوع مباشرة داخل المتصفح. استخدم زر التنزيل بالأعلى.</span>
   `;
   els.viewerBody.appendChild(card);
 }
