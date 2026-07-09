@@ -599,7 +599,10 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/logout") return logout(req, res);
     if (req.method === "GET" && url.pathname === "/api/me") {
       const auth = getSession(req);
-      return json(res, 200, { user: auth ? publicUser(auth.user) : null });
+      if (!auth) return json(res, 200, { user: null });
+      const rememberToken = createRememberToken(auth.user);
+      saveDb();
+      return json(res, 200, { user: publicUser(auth.user), rememberToken });
     }
     if (req.method === "GET" && url.pathname === "/api/messages") return getMessages(req, res);
     if (req.method === "GET" && url.pathname === "/api/users") return getUsers(req, res);
