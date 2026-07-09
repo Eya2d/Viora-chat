@@ -1,0 +1,47 @@
+{
+  "users": [
+    {
+      "id": "2e68acad-f597-4ed5-acc2-3159a255d2e2",
+      "name": "إياد 455",
+      "username": "554",
+      "email": "eyadscript@gmail.com",
+      "deviceId": "a99271ea36533ff7514f9636553468b0fab2114261e087fa",
+      "passwordHash": "81261ccd99029bcb19ff21c197307ab6:2161d2ebc057d1cfa5e9560b4efabfc4164879a71fbe8acd199cbae250026514191afd02ffdce1459fc8936d15433a561b55c5a38fa49dc8baeac76c7ed42970",
+      "avatar": "",
+      "createdAt": "2026-07-09T09:23:59.519Z"
+    }
+  ],
+  "sessions": [
+    {
+      "token": "7c3294ddeeef5e5c91626fa43996d14adc01577db26603d010cc32717389ae6f",
+      "userId": "2e68acad-f597-4ed5-acc2-3159a255d2e2",
+      "expiresAt": 1786181077477
+    }
+  ],
+  "messages": [
+    {
+      "id": "8128544c-6644-4dc6-839a-a97ecae15924",
+      "userId": "2e68acad-f597-4ed5-acc2-3159a255d2e2",
+      "author": "إياد 455",
+      "username": "554",
+      "text": "اهلا",
+      "media": null,
+      "createdAt": "2026-07-09T09:24:50.764Z"
+    },
+    {
+      "id": "74ed08f1-d98e-4117-a0dc-959342fe2010",
+      "userId": "2e68acad-f597-4ed5-acc2-3159a255d2e2",
+      "author": "إياد 455",
+      "username": "554",
+      "text": "",
+      "media": {
+        "type": "image",
+        "mime": "image/jpeg",
+        "name": "pinterest_f3c5396ec94aa4aa47564e95d0393c06_1_.jpg",
+        "url": "/uploads/1783589102089-0dd6f4525e07c35d-pinterest_f3c5396ec94aa4aa47564e95d0393c06_1_.jpg",
+        "size": 49055
+      },
+      "createdAt": "2026-07-09T09:25:02.091Z"
+    }
+  ]
+}
