@@ -528,8 +528,52 @@ textarea:focus {
   background: #111;
 }
 
+.message img {
+  cursor: zoom-in;
+}
+
 .message audio {
   width: min(100%, 330px);
+}
+
+.document-chip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 2px;
+  width: min(100%, 360px);
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  text-align: right;
+  background: var(--soft);
+}
+
+.document-chip span {
+  grid-row: span 2;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  color: #fff;
+  background: var(--green);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.document-chip strong,
+.document-chip small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-chip small {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .media-name {
@@ -724,7 +768,8 @@ textarea:focus {
 }
 
 .share-modal,
-.edit-modal {
+.edit-modal,
+.viewer-modal {
   position: fixed;
   right: 50%;
   top: 50%;
@@ -747,7 +792,8 @@ textarea:focus {
 }
 
 .share-modal header,
-.edit-modal header {
+.edit-modal header,
+.viewer-modal header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -755,13 +801,15 @@ textarea:focus {
 }
 
 .share-modal h2,
-.edit-modal h2 {
+.edit-modal h2,
+.viewer-modal h2 {
   margin: 0;
   font-size: 18px;
 }
 
 .share-modal header button,
-.edit-modal header button {
+.edit-modal header button,
+.viewer-modal header button {
   display: grid;
   place-items: center;
   width: 36px;
@@ -771,6 +819,81 @@ textarea:focus {
   color: var(--text);
   background: var(--soft);
   font-size: 24px;
+}
+
+.viewer-modal {
+  width: min(94vw, 760px);
+  height: min(86vh, 720px);
+}
+
+.viewer-modal header div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.viewer-modal header a {
+  display: grid;
+  place-items: center;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: #fff;
+  text-decoration: none;
+  background: var(--green);
+}
+
+.viewer-body {
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+}
+
+.viewer-image {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  margin: auto;
+  object-fit: contain;
+}
+
+.viewer-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 520px;
+  border: 0;
+  background: #fff;
+}
+
+.viewer-text {
+  margin: 0;
+  padding: 14px;
+  color: var(--text);
+  white-space: pre-wrap;
+  direction: auto;
+  font-family: Consolas, "Courier New", monospace;
+}
+
+.document-view-card {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+}
+
+.document-view-card small {
+  color: var(--muted);
+}
+
+.document-view-card a {
+  justify-self: start;
+  padding: 10px 14px;
+  border-radius: 8px;
+  color: #fff;
+  text-decoration: none;
+  background: var(--green);
 }
 
 .share-users {
