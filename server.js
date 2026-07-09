@@ -111,6 +111,10 @@ function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
   return `${salt}:${hash}`;
 }
 
+function hashToken(token) {
+  return crypto.createHash("sha256").update(String(token || "")).digest("hex");
+}
+
 function verifyPassword(password, stored) {
   const [salt, hash] = stored.split(":");
   const candidate = hashPassword(password, salt).split(":")[1];
@@ -158,6 +162,19 @@ function requireAuth(req, res) {
 function setSessionCookie(res, token) {
   const maxAge = SESSION_DAYS * 24 * 60 * 60;
   res.setHeader("Set-Cookie", `session=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}`);
+}
+
+function createSession(userId) {
+  const token = crypto.randomBytes(32).toString("hex");
+  db.sessions.push({ token, userId, expiresAt: Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000 });
+  return token;
+}
+
+function createRememberToken(user) {
+  const token = crypto.randomBytes(32).toString("hex");
+  user.rememberTokenHash = hashToken(token);
+  user.rememberedAt = new Date().toISOString();
+  return token;
 }
 
 function normalize(value) {
@@ -249,12 +266,12 @@ async function register(req, res) {
     createdAt: new Date().toISOString()
   };
   db.users.push(user);
-  const token = crypto.randomBytes(32).toString("hex");
-  db.sessions.push({ token, userId: user.id, expiresAt: Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000 });
+  const token = createSession(user.id);
+  const rememberToken = createRememberToken(user);
   saveDb();
   broadcast("user", publicUser(user));
   setSessionCookie(res, token);
-  json(res, 201, { user: publicUser(user) });
+  json(res, 201, { user: publicUser(user), rememberToken });
 }
 
 async function login(req, res) {
@@ -265,8 +282,22 @@ async function login(req, res) {
   if (!user || !verifyPassword(password, user.passwordHash)) {
     return json(res, 401, { error: "بيانات الدخول غير صحيحة." });
   }
-  const token = crypto.randomBytes(32).toString("hex");
-  db.sessions.push({ token, userId: user.id, expiresAt: Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000 });
+  const token = createSession(user.id);
+  const rememberToken = createRememberToken(user);
+  saveDb();
+  setSessionCookie(res, token);
+  json(res, 200, { user: publicUser(user), rememberToken });
+}
+
+async function rememberLogin(req, res) {
+  const payload = JSON.parse((await getBody(req)).toString("utf8") || "{}");
+  const userId = String(payload.userId || "");
+  const rememberToken = String(payload.rememberToken || "");
+  const user = db.users.find((item) => item.id === userId);
+  if (!user || !rememberToken || user.rememberTokenHash !== hashToken(rememberToken)) {
+    return json(res, 401, { error: "تعذر استرجاع الجلسة." });
+  }
+  const token = createSession(user.id);
   saveDb();
   setSessionCookie(res, token);
   json(res, 200, { user: publicUser(user) });
@@ -548,6 +579,7 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
     if (req.method === "POST" && url.pathname === "/api/register") return register(req, res);
     if (req.method === "POST" && url.pathname === "/api/login") return login(req, res);
+    if (req.method === "POST" && url.pathname === "/api/remember") return rememberLogin(req, res);
     if (req.method === "POST" && url.pathname === "/api/logout") return logout(req, res);
     if (req.method === "GET" && url.pathname === "/api/me") {
       const auth = getSession(req);
