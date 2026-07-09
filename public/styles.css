@@ -948,6 +948,7 @@ textarea:focus {
   .chat-page,
   .settings-page {
     width: min(100%, 720px);
+    flex: 1 1;
     margin: 0 auto;
     border-inline: 1px solid var(--line);
   }
