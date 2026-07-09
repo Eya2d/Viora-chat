@@ -502,6 +502,11 @@ html[dir="ltr"] .chat-row {
   font-weight: 900;
 }
 
+.chat-row.is-typing small {
+  color: var(--green);
+  font-weight: 800;
+}
+
 .unread-dot {
   display: grid;
   place-items: center;
@@ -635,7 +640,7 @@ html[dir="ltr"] .composer-menu {
   max-width: min(560px, 82%);
   align-self: flex-start;
   padding: 8px 10px 6px;
-  border-radius: 8px 8px 8px 2px;
+  border-radius: 8px 0px 8px 8px;
   background: var(--bubble);
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
 }
@@ -643,7 +648,7 @@ html[dir="ltr"] .composer-menu {
 html[dir="ltr"] .message {
   direction: ltr;
   text-align: left;
-  border-radius: 8px 8px 8px 2px;
+  border-radius: 0px 8px 8px 8px;
 }
 
 .message:hover {
@@ -668,7 +673,7 @@ html[dir="ltr"] .message.mine {
   width: 10px;
   height: 12px;
   background: var(--bubble);
-  clip-path: polygon(100% 0, 100% 100%, 0 0);
+  clip-path: polygon(0% 0, 0% 100%, 100% 0%);
 }
 
 .message.mine.with-tail::before {
