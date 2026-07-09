@@ -32,6 +32,7 @@
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -532,6 +533,7 @@ textarea:focus {
 
 .media-name {
   display: block;
+  overflow: hidden;
   margin-top: 6px;
   color: var(--muted);
   font-size: 12px;
