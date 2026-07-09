@@ -48,6 +48,7 @@ const els = {
   settingsName: document.querySelector("#settingsName"),
   settingsUsername: document.querySelector("#settingsUsername"),
   themeToggle: document.querySelector("#themeToggle"),
+  avatarInput: document.querySelector("#avatarInput"),
   messages: document.querySelector("#messages"),
   composer: document.querySelector("#composer"),
   messageInput: document.querySelector("#messageInput"),
@@ -156,7 +157,7 @@ function setAuthenticated(user) {
   els.accountLabel.textContent = `@${user.username}`;
   els.settingsName.textContent = user.name;
   els.settingsUsername.textContent = `@${user.username}`;
-  els.settingsAvatar.textContent = initials(user.name);
+  setAvatar(els.settingsAvatar, user);
   fillProfileForm(user);
   startEvents();
   showPage("accounts");
@@ -169,6 +170,7 @@ function fillProfileForm(user) {
   els.profileForm.about.value = user.about || "متاح";
   els.profileForm.password.value = "";
   els.profileForm.newPassword.value = "";
+  if (els.avatarInput) els.avatarInput.value = "";
 }
 
 function switchAuthTab(tab) {
@@ -227,13 +229,14 @@ function renderUsers() {
     row.className = "chat-row user-row";
     row.type = "button";
     row.innerHTML = `
-      <span class="avatar">${escapeHtml(initials(user.name))}</span>
+      <span class="avatar" data-avatar-user="${escapeHtml(user.id)}">${escapeHtml(initials(user.name))}</span>
       <span>
         <strong>${escapeHtml(user.name)}</strong>
         <small>@${escapeHtml(user.username)} · ${escapeHtml(user.about || "متاح")}</small>
       </span>
       <em>خاص</em>
     `;
+    setAvatar(row.querySelector(".avatar"), user);
     row.addEventListener("click", () => openChat("direct", user));
     els.usersList.appendChild(row);
   });
@@ -258,8 +261,8 @@ function updateChatHeader() {
     return;
   }
   const user = state.activeChat.user;
-  els.chatAvatar.textContent = initials(user.name);
   els.chatAvatar.classList.remove("group");
+  setAvatar(els.chatAvatar, user);
   els.chatTitle.textContent = user.name;
   els.statusLine.textContent = `@${user.username} · ${user.about || "متاح"}`;
 }
@@ -574,6 +577,17 @@ function initials(name) {
   return parts.slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "U";
 }
 
+function setAvatar(node, user) {
+  node.textContent = "";
+  node.style.backgroundImage = "";
+  node.classList.toggle("has-image", Boolean(user?.avatar));
+  if (user?.avatar) {
+    node.style.backgroundImage = `url("${user.avatar}")`;
+  } else {
+    node.textContent = initials(user?.name || "U");
+  }
+}
+
 function currentRecipientId() {
   return state.activeChat.type === "direct" ? state.activeChat.user.id : "";
 }
@@ -727,8 +741,10 @@ els.registerForm.addEventListener("submit", async (event) => {
 els.profileForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
-    const data = Object.fromEntries(new FormData(els.profileForm));
-    const { user } = await api("/api/profile", { method: "POST", body: JSON.stringify(data) });
+    const formData = new FormData(els.profileForm);
+    const hasAvatar = els.avatarInput?.files?.length > 0;
+    const requestBody = hasAvatar ? formData : JSON.stringify(Object.fromEntries(formData));
+    const { user } = await api("/api/profile", { method: "POST", body: requestBody });
     state.user = user;
     setAuthenticated(user);
     await loadUsers();
@@ -777,6 +793,22 @@ els.generalChatButton.addEventListener("click", () => openChat("general"));
 els.backToAccounts.addEventListener("click", () => showPage("accounts"));
 els.backFromSettings.addEventListener("click", () => showPage("accounts"));
 els.themeToggle.addEventListener("change", () => applyTheme(els.themeToggle.checked ? "dark" : "light"));
+
+els.avatarInput.addEventListener("change", () => {
+  const file = els.avatarInput.files[0];
+  if (!file) {
+    setAvatar(els.settingsAvatar, state.user);
+    return;
+  }
+  if (!file.type.startsWith("image/")) {
+    els.avatarInput.value = "";
+    showToast("اختر ملف صورة فقط.");
+    return;
+  }
+  els.settingsAvatar.textContent = "";
+  els.settingsAvatar.classList.add("has-image");
+  els.settingsAvatar.style.backgroundImage = `url("${URL.createObjectURL(file)}")`;
+});
 
 els.chatMenuButton.addEventListener("click", (event) => {
   event.stopPropagation();
