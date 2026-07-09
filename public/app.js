@@ -71,7 +71,12 @@ const els = {
   editModal: document.querySelector("#editModal"),
   closeEditModal: document.querySelector("#closeEditModal"),
   editMessageInput: document.querySelector("#editMessageInput"),
-  saveEditButton: document.querySelector("#saveEditButton")
+  saveEditButton: document.querySelector("#saveEditButton"),
+  viewerModal: document.querySelector("#viewerModal"),
+  viewerTitle: document.querySelector("#viewerTitle"),
+  viewerOpenLink: document.querySelector("#viewerOpenLink"),
+  viewerBody: document.querySelector("#viewerBody"),
+  closeViewerModal: document.querySelector("#closeViewerModal")
 };
 
 applyTheme(localStorage.getItem("vioraTheme") || "light");
@@ -297,7 +302,7 @@ function rerenderMessages() {
 function matchesMessageSearch(message) {
   const query = normalizeForSearch(state.messageSearch);
   if (!query) return true;
-  const haystack = normalizeForSearch(`${message.author || ""} ${message.username || ""} ${message.text || ""} ${message.media?.name || ""}`);
+  const haystack = normalizeForSearch(`${message.author || ""} ${message.username || ""} ${message.text || ""} ${message.media?.name || ""} ${message.media?.mime || ""}`);
   return haystack.includes(query);
 }
 
@@ -403,6 +408,60 @@ function closeEditModal() {
   els.editMessageInput.value = "";
 }
 
+function closeViewerModal() {
+  els.viewerModal.classList.add("hidden");
+  els.viewerBody.textContent = "";
+  els.viewerOpenLink.removeAttribute("href");
+}
+
+async function openAttachmentViewer(media) {
+  els.viewerTitle.textContent = media.name || "عرض الملف";
+  els.viewerOpenLink.href = media.url;
+  els.viewerBody.textContent = "";
+  els.viewerModal.classList.remove("hidden");
+
+  if (media.type === "image") {
+    const image = document.createElement("img");
+    image.className = "viewer-image";
+    image.src = media.url;
+    image.alt = media.name || "صورة";
+    els.viewerBody.appendChild(image);
+    return;
+  }
+
+  if (media.mime === "application/pdf") {
+    const frame = document.createElement("iframe");
+    frame.className = "viewer-frame";
+    frame.src = media.url;
+    frame.title = media.name || "PDF";
+    els.viewerBody.appendChild(frame);
+    return;
+  }
+
+  if (media.mime === "text/plain") {
+    const pre = document.createElement("pre");
+    pre.className = "viewer-text";
+    pre.textContent = "جاري تحميل النص...";
+    els.viewerBody.appendChild(pre);
+    try {
+      const response = await fetch(media.url);
+      pre.textContent = await response.text();
+    } catch {
+      pre.textContent = "تعذر عرض الملف النصي. استخدم زر فتح.";
+    }
+    return;
+  }
+
+  const card = document.createElement("div");
+  card.className = "document-view-card";
+  card.innerHTML = `
+    <strong>${escapeHtml(media.name || "ملف")}</strong>
+    <small>${escapeHtml(media.mime || "ملف")} · ${formatSize(media.size)}</small>
+    <a href="${escapeHtml(media.url)}" target="_blank" rel="noopener">فتح الملف</a>
+  `;
+  els.viewerBody.appendChild(card);
+}
+
 function messageBelongsToActiveChat(message) {
   if (state.activeChat.type === "general") return (message.conversationId || "general") === "general";
   const otherId = state.activeChat.user?.id;
@@ -419,20 +478,38 @@ function renderMedia(media) {
   if (media.type === "image") {
     mediaNode = document.createElement("img");
     mediaNode.alt = media.name || "صورة";
+    mediaNode.addEventListener("click", () => openAttachmentViewer(media));
   } else if (media.type === "video") {
     mediaNode = document.createElement("video");
     mediaNode.controls = true;
-  } else {
+  } else if (media.type === "audio") {
     mediaNode = document.createElement("audio");
     mediaNode.controls = true;
+  } else {
+    mediaNode = document.createElement("button");
+    mediaNode.type = "button";
+    mediaNode.className = "document-chip";
+    mediaNode.innerHTML = `
+      <span>${documentIcon(media.mime)}</span>
+      <strong>${escapeHtml(media.name || "ملف")}</strong>
+      <small>${escapeHtml(media.mime || "ملف")} · ${formatSize(media.size)}</small>
+    `;
+    mediaNode.addEventListener("click", () => openAttachmentViewer(media));
   }
-  mediaNode.src = media.url;
+  if (mediaNode.tagName !== "BUTTON") mediaNode.src = media.url;
   wrapper.appendChild(mediaNode);
   const name = document.createElement("span");
   name.className = "media-name";
   name.textContent = `${media.name || "ملف"} · ${formatSize(media.size)}`;
   wrapper.appendChild(name);
   return wrapper;
+}
+
+function documentIcon(mime = "") {
+  if (mime === "application/pdf") return "PDF";
+  if (mime === "text/plain") return "TXT";
+  if (mime.includes("word")) return "DOC";
+  return "FILE";
 }
 
 function escapeHtml(value) {
@@ -675,6 +752,7 @@ els.messageOverlay.addEventListener("click", () => {
   closeMessageContextMenu();
   closeShareModal();
   closeEditModal();
+  closeViewerModal();
 });
 
 els.forwardMessageButton.addEventListener("click", openShareModal);
@@ -695,6 +773,7 @@ els.deleteMessageButton.addEventListener("click", async () => {
 els.editMessageButton.addEventListener("click", openEditModal);
 els.closeShareModal.addEventListener("click", closeShareModal);
 els.closeEditModal.addEventListener("click", closeEditModal);
+els.closeViewerModal.addEventListener("click", closeViewerModal);
 
 els.shareSelectedButton.addEventListener("click", async () => {
   if (!state.selectedMessage || state.selectedShareUsers.size === 0) return;
