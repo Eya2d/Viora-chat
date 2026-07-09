@@ -623,4 +623,3 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`Viora chat is running at http://localhost:${PORT}`);
 });
-
