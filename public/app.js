@@ -579,7 +579,7 @@ function currentRecipientId() {
 }
 
 async function loadMe() {
-  const { user, rememberToken } = await api("/api/me");
+  const { user, rememberToken } = await api(`/api/me?deviceId=${encodeURIComponent(state.deviceId)}`);
   if (user) {
     storeRememberSession(user, rememberToken);
     setAuthenticated(user);
@@ -698,6 +698,7 @@ els.loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
     const data = Object.fromEntries(new FormData(els.loginForm));
+    data.deviceId = state.deviceId;
     const { user, rememberToken } = await api("/api/login", { method: "POST", body: JSON.stringify(data) });
     storeRememberSession(user, rememberToken);
     setAuthenticated(user);
