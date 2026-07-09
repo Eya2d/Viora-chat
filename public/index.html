@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Viora</title>
     <link rel="icon" href="/icon.png">
-    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="styles.css">
+
+    <script type="module" src="https://unpkg.com/ionicons@8.0.13/dist/ionicons/ionicons.esm.js"></script>
   </head>
   <body>
     <main class="phone-shell">
@@ -64,8 +66,8 @@
             <p id="accountLabel">متصل</p>
           </div>
           <div class="top-actions">
-            <button class="icon-button ccvv" id="refreshButton" type="button" title="تحديث" aria-label="تحديث">↻</button>
-            <button class="icon-button ccvv" id="menuButton" type="button" title="القائمة" aria-label="القائمة">⋮</button>
+            <button class="icon-button ccvv" id="refreshButton" type="button" title="تحديث" aria-label="تحديث"><ion-icon name="refresh-outline"></ion-icon></button>
+            <button class="icon-button ccvv" id="menuButton" type="button" title="القائمة" aria-label="القائمة"><ion-icon name="ellipsis-vertical"></ion-icon></button>
             <div class="menu hidden" id="overflowMenu">
               <button type="button" data-open-settings>الإعدادات</button>
               <button type="button" id="logoutButton">تسجيل الخروج</button>
@@ -99,14 +101,14 @@
 
       <section class="page chat-page hidden" id="chatPage">
         <header class="conversation-header">
-          <button class="icon-button ccvv back-button" id="backToAccounts" type="button" title="رجوع" aria-label="رجوع">‹</button>
+          <button class="icon-button ccvv back-button" id="backToAccounts" type="button" title="رجوع" aria-label="رجوع"><ion-icon name="chevron-back-outline"></ion-icon></button>
           <span class="avatar group" id="chatAvatar">ع</span>
           <div>
             <h2 id="chatTitle">المحادثة العامة</h2>
             <p id="statusLine">متصل الآن</p>
           </div>
-          <button class="icon-button ccvv" id="messageSearchButton" type="button" title="بحث" aria-label="بحث">⌕</button>
-          <button class="icon-button ccvv" id="chatMenuButton" type="button" title="مزيد" aria-label="مزيد">⋮</button>
+          <button class="icon-button ccvv" id="messageSearchButton" type="button" title="بحث" aria-label="بحث"><ion-icon name="search-outline"></ion-icon></button>
+          <button class="icon-button ccvv" id="chatMenuButton" type="button" title="مزيد" aria-label="مزيد"><ion-icon name="ellipsis-vertical"></ion-icon></button>
           <div class="menu chat-menu hidden" id="chatMenu">
             <button type="button" id="openMessageSearch">بحث في الرسائل</button>
             <button type="button" id="scrollBottomButton">آخر رسالة</button>
@@ -122,13 +124,13 @@
 
         <form class="composer" id="composer">
           <input id="mediaInput" name="media" type="file" accept="image/*,video/*,audio/*,.pdf,.txt,.doc,.docx,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
-          <button class="tool-button" id="attachButton" type="button" title="إرفاق ملف" aria-label="إرفاق ملف">📎</button>
+          <button class="tool-button" id="attachButton" type="button" title="إرفاق ملف" aria-label="إرفاق ملف"><ion-icon name="attach-outline"></ion-icon></button>
           <div class="message-box">
             <div id="mediaPreview" class="media-preview hidden"></div>
             <textarea id="messageInput" name="text" rows="1" placeholder="اكتب رسالة" maxlength="2000"></textarea>
           </div>
-          <button class="tool-button" type="button" title="تسجيل صوت" aria-label="تسجيل صوت">🎙</button>
-          <button class="tool-button" id="composerMenuButton" type="button" title="خيارات الإرسال" aria-label="خيارات الإرسال">⋮</button>
+          <button class="tool-button" type="button" title="تسجيل صوت" aria-label="تسجيل صوت"><ion-icon name="mic"></ion-icon></button>
+          <button class="tool-button" id="composerMenuButton" type="button" title="خيارات الإرسال" aria-label="خيارات الإرسال"><ion-icon name="ellipsis-vertical"></ion-icon></button>
           <div class="menu composer-menu hidden" id="composerMenu">
             <button type="button" id="composerSearchButton">بحث في الرسائل</button>
             <button type="button" id="clearDraftButton">مسح الكتابة</button>
@@ -140,7 +142,7 @@
 
       <section class="page settings-page hidden" id="settingsPage">
         <header class="settings-header">
-          <button class="icon-button ccvv back-button" id="backFromSettings" type="button" title="رجوع" aria-label="رجوع">‹</button>
+          <button class="icon-button ccvv back-button" id="backFromSettings" type="button" title="رجوع" aria-label="رجوع"><ion-icon name="chevron-back-outline"></ion-icon></button>
           <h1>الإعدادات</h1>
         </header>
 
@@ -226,7 +228,7 @@
       <header>
         <h2 id="viewerTitle">عرض الملف</h2>
         <div>
-          <a id="viewerOpenLink" href="#" download title="تنزيل الملف" aria-label="تنزيل الملف">↓</a>
+          <a id="viewerOpenLink" href="#" download title="تنزيل الملف" aria-label="تنزيل الملف"><ion-icon name="arrow-down-circle-outline"></ion-icon></a>
           <button type="button" id="closeViewerModal" aria-label="إغلاق">×</button>
         </div>
       </header>
