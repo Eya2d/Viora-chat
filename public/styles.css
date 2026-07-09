@@ -256,15 +256,20 @@ textarea:focus {
 .icon-button,
 .tool-button,
 .send-button {
-  display: grid;
+  display: flex;
   place-items: center;
+  justify-content: center;
   width: 42px;
   height: 42px;
   flex: 0 0 42px;
   border: 0;
   border-radius: 50%;
   color: inherit;
+  font-family: math;
   background: transparent;
+}
+.ccvv {
+  font-size: 26px;
 }
 
 .icon-button:hover,
@@ -390,7 +395,9 @@ textarea:focus {
 }
 
 .chat-page {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  /* display: grid; */
   grid-template-rows: auto auto minmax(0, 1fr) auto;
   background:
     linear-gradient(rgba(230, 221, 212, 0.86), rgba(230, 221, 212, 0.86)),
@@ -447,6 +454,7 @@ textarea:focus {
 .messages {
   display: flex;
   flex-direction: column;
+  flex: 1 1;
   gap: 8px;
   padding: 18px clamp(10px, 3vw, 36px);
   overflow: auto;
