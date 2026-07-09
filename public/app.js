@@ -416,6 +416,11 @@ function closeViewerModal() {
   els.viewerOpenLink.removeAttribute("download");
 }
 
+function canUseBrowserFrameViewer() {
+  const maxTouchPoints = typeof navigator === "undefined" ? 0 : navigator.maxTouchPoints || 0;
+  return window.matchMedia("(hover: hover) and (pointer: fine)").matches && maxTouchPoints === 0;
+}
+
 async function openAttachmentViewer(media) {
   els.viewerTitle.textContent = media.name || "عرض الملف";
   els.viewerOpenLink.href = media.url;
@@ -430,6 +435,15 @@ async function openAttachmentViewer(media) {
     image.src = media.url;
     image.alt = media.name || "صورة";
     els.viewerBody.appendChild(image);
+    return;
+  }
+
+  if (canUseBrowserFrameViewer() && (media.mime === "application/pdf" || media.mime === "text/plain")) {
+    const frame = document.createElement("iframe");
+    frame.className = "viewer-frame";
+    frame.src = media.url;
+    frame.title = media.name || "ملف";
+    els.viewerBody.appendChild(frame);
     return;
   }
 
@@ -463,7 +477,7 @@ async function openAttachmentViewer(media) {
     <b>${escapeHtml(documentIcon(media.mime))}</b>
     <strong>${escapeHtml(media.name || "ملف")}</strong>
     <small>${escapeHtml(media.mime || "ملف")} · ${formatSize(media.size)}</small>
-    <span>عارض Viora الخاص يعرض تفاصيل هذا الملف بدون iframe أو فتح داخل المتصفح. استخدم زر التنزيل بالأعلى للحصول على الملف.</span>
+    <span>${canUseBrowserFrameViewer() ? "لا يدعم المتصفح عرض هذا النوع داخل الإطار، استخدم زر التنزيل بالأعلى." : "عارض Viora الخاص يعرض تفاصيل هذا الملف بدون iframe على الأجهزة اللمسية. استخدم زر التنزيل بالأعلى للحصول على الملف."}</span>
   `;
   els.viewerBody.appendChild(card);
 }
