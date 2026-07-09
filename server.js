@@ -207,10 +207,14 @@ function sanitizeFileName(name) {
 }
 
 function inferMime(filename, fallback) {
-  if (fallback && fallback !== "application/octet-stream") return fallback;
+  if (fallback && fallback !== "application/octet-stream") return fallback.split(";")[0].trim();
   const ext = path.extname(filename || "").toLowerCase();
   const inferred = MIME_TYPES[ext];
   return inferred ? inferred.split(";")[0] : fallback;
+}
+
+function normalizeMime(type) {
+  return String(type || "").split(";")[0].trim().toLowerCase();
 }
 
 function storeUploadedFile(file) {
@@ -562,13 +566,14 @@ async function uploadMedia(req, res) {
   const recipientId = String(fields.recipientId || "");
   if (!file) return json(res, 400, { error: "اختر ملفًا للإرسال." });
   if (recipientId && !canMessageUser(recipientId)) return json(res, 404, { error: "هذا الحساب غير موجود." });
-  if (!allowedAttachments.has(file.type)) return json(res, 400, { error: "يدعم الموقع الصور والفيديو والصوت وملفات PDF وTXT وWord فقط." });
+  const fileType = normalizeMime(file.type);
+  if (!allowedAttachments.has(fileType)) return json(res, 400, { error: "يدعم الموقع الصور والفيديو والصوت وملفات PDF وTXT وWord فقط." });
   const storedFile = storeUploadedFile(file);
-  const mediaType = file.type.startsWith("image/")
+  const mediaType = fileType.startsWith("image/")
     ? "image"
-    : file.type.startsWith("video/")
+    : fileType.startsWith("video/")
       ? "video"
-      : file.type.startsWith("audio/")
+      : fileType.startsWith("audio/")
         ? "audio"
         : "document";
   const message = {
@@ -582,7 +587,7 @@ async function uploadMedia(req, res) {
     text: caption,
     media: {
       type: mediaType,
-      mime: file.type,
+      mime: fileType,
       name: storedFile.name,
       url: storedFile.url,
       size: storedFile.size
