@@ -7,8 +7,8 @@ const { URL } = require("url");
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, "public");
-const DATA_DIR = path.join(ROOT, "data");
-const UPLOAD_DIR = path.join(PUBLIC_DIR, "uploads");
+const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(ROOT, "data"));
+const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || (process.env.DATA_DIR ? path.join(DATA_DIR, "uploads") : path.join(PUBLIC_DIR, "uploads")));
 const DB_FILE = path.join(DATA_DIR, "db.json");
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 const SESSION_DAYS = 30;
@@ -613,6 +613,21 @@ function serveStatic(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   let pathname = decodeURIComponent(url.pathname);
   if (pathname === "/") pathname = "/index.html";
+
+  if (pathname.startsWith("/uploads/")) {
+    const uploadPath = path.normalize(path.join(UPLOAD_DIR, pathname.replace(/^\/uploads\//, "")));
+    const publicUploadPath = path.normalize(path.join(PUBLIC_DIR, pathname));
+    const candidates = uploadPath.startsWith(UPLOAD_DIR) ? [uploadPath] : [];
+    if (publicUploadPath.startsWith(path.join(PUBLIC_DIR, "uploads"))) candidates.push(publicUploadPath);
+
+    const existing = candidates.find((candidate) => fs.existsSync(candidate));
+    if (!existing) return json(res, 404, { error: "File not found" });
+    const ext = path.extname(existing).toLowerCase();
+    res.writeHead(200, { "Content-Type": MIME_TYPES[ext] || "application/octet-stream" });
+    fs.createReadStream(existing).pipe(res);
+    return;
+  }
+
   const filePath = path.normalize(path.join(PUBLIC_DIR, pathname));
   if (!filePath.startsWith(PUBLIC_DIR)) return json(res, 403, { error: "Forbidden" });
   fs.readFile(filePath, (error, content) => {
