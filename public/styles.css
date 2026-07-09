@@ -82,9 +82,12 @@ button {
 }
 
 .auth-page {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   place-items: center;
   padding: 24px;
+  margin: auto;
+  height: max-content;
 }
 
 .auth-hero {
@@ -807,6 +810,14 @@ textarea:focus {
 .viewer-modal h2 {
   margin: 0;
   font-size: 18px;
+  max-width: 200px;
+  font-weight: 400;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  text-shadow: var(--most-visited-text-shadow);
+  white-space: nowrap;
+  width: 100%;
 }
 
 .share-modal header button,
@@ -851,6 +862,7 @@ textarea:focus {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--soft);
+  display: flex;
 }
 
 .viewer-image {
