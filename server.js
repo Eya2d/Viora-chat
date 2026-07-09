@@ -303,6 +303,21 @@ async function rememberLogin(req, res) {
   json(res, 200, { user: publicUser(user) });
 }
 
+async function deviceLogin(req, res) {
+  const payload = JSON.parse((await getBody(req)).toString("utf8") || "{}");
+  const deviceId = String(payload.deviceId || "").trim();
+  if (!deviceId || deviceId.length < 16) {
+    return json(res, 400, { error: "تعذر التحقق من الجهاز." });
+  }
+  const user = db.users.find((item) => item.deviceId === deviceId);
+  if (!user) return json(res, 404, { error: "لا يوجد حساب محفوظ لهذا الجهاز." });
+  const token = createSession(user.id);
+  const rememberToken = createRememberToken(user);
+  saveDb();
+  setSessionCookie(res, token);
+  json(res, 200, { user: publicUser(user), rememberToken });
+}
+
 function getMessages(req, res) {
   const auth = requireAuth(req, res);
   if (!auth) return;
@@ -580,6 +595,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/register") return register(req, res);
     if (req.method === "POST" && url.pathname === "/api/login") return login(req, res);
     if (req.method === "POST" && url.pathname === "/api/remember") return rememberLogin(req, res);
+    if (req.method === "POST" && url.pathname === "/api/device-login") return deviceLogin(req, res);
     if (req.method === "POST" && url.pathname === "/api/logout") return logout(req, res);
     if (req.method === "GET" && url.pathname === "/api/me") {
       const auth = getSession(req);
@@ -607,3 +623,4 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`Viora chat is running at http://localhost:${PORT}`);
 });
+
