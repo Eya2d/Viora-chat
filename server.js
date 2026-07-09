@@ -140,6 +140,17 @@ function listUsersFor(currentUserId) {
     .sort((a, b) => a.name.localeCompare(b.name, "ar"));
 }
 
+function userHasDevice(user, deviceId) {
+  return user.deviceId === deviceId || (Array.isArray(user.deviceIds) && user.deviceIds.includes(deviceId));
+}
+
+function rememberDevice(user, deviceId) {
+  if (!deviceId || deviceId.length < 16) return;
+  if (!Array.isArray(user.deviceIds)) user.deviceIds = [];
+  if (user.deviceId && !user.deviceIds.includes(user.deviceId)) user.deviceIds.push(user.deviceId);
+  if (!user.deviceIds.includes(deviceId)) user.deviceIds.push(deviceId);
+}
+
 function getSession(req) {
   const token = parseCookies(req.headers.cookie).session;
   if (!token) return null;
@@ -251,7 +262,7 @@ async function register(req, res) {
   if (db.users.some((user) => user.email === email)) {
     return json(res, 409, { error: "هذا البريد لديه حساب بالفعل." });
   }
-  if (db.users.some((user) => user.deviceId === deviceId)) {
+  if (db.users.some((user) => userHasDevice(user, deviceId))) {
     return json(res, 409, { error: "لا يمكن إنشاء أكثر من حساب من نفس الجهاز." });
   }
 
@@ -261,6 +272,7 @@ async function register(req, res) {
     username,
     email,
     deviceId,
+    deviceIds: [deviceId],
     passwordHash: hashPassword(password),
     avatar: "",
     createdAt: new Date().toISOString()
@@ -278,10 +290,12 @@ async function login(req, res) {
   const payload = JSON.parse((await getBody(req)).toString("utf8") || "{}");
   const identifier = normalize(payload.identifier);
   const password = String(payload.password || "");
+  const deviceId = String(payload.deviceId || "").trim();
   const user = db.users.find((item) => item.email === identifier || item.username === identifier);
   if (!user || !verifyPassword(password, user.passwordHash)) {
     return json(res, 401, { error: "بيانات الدخول غير صحيحة." });
   }
+  rememberDevice(user, deviceId);
   const token = createSession(user.id);
   const rememberToken = createRememberToken(user);
   saveDb();
@@ -309,7 +323,7 @@ async function deviceLogin(req, res) {
   if (!deviceId || deviceId.length < 16) {
     return json(res, 400, { error: "تعذر التحقق من الجهاز." });
   }
-  const user = db.users.find((item) => item.deviceId === deviceId);
+  const user = db.users.find((item) => userHasDevice(item, deviceId));
   if (!user) return json(res, 404, { error: "لا يوجد حساب محفوظ لهذا الجهاز." });
   const token = createSession(user.id);
   const rememberToken = createRememberToken(user);
@@ -600,6 +614,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/api/me") {
       const auth = getSession(req);
       if (!auth) return json(res, 200, { user: null });
+      rememberDevice(auth.user, String(url.searchParams.get("deviceId") || "").trim());
       const rememberToken = createRememberToken(auth.user);
       saveDb();
       return json(res, 200, { user: publicUser(auth.user), rememberToken });
@@ -611,18 +626,3 @@ const server = http.createServer(async (req, res) => {
     const deleteMatch = /^\/api\/messages\/([^/]+)\/delete$/.exec(url.pathname);
     if (req.method === "POST" && deleteMatch) return deleteMessage(req, res, deleteMatch[1]);
     const editMatch = /^\/api\/messages\/([^/]+)\/edit$/.exec(url.pathname);
-    if (req.method === "POST" && editMatch) return editMessage(req, res, editMatch[1]);
-    const forwardMatch = /^\/api\/messages\/([^/]+)\/forward$/.exec(url.pathname);
-    if (req.method === "POST" && forwardMatch) return forwardMessage(req, res, forwardMatch[1]);
-    if (req.method === "POST" && url.pathname === "/api/upload") return uploadMedia(req, res);
-    if (req.method === "GET" && url.pathname === "/api/events") return stream(req, res);
-    return serveStatic(req, res);
-  } catch (error) {
-    const status = error.status || 500;
-    json(res, status, { error: status === 500 ? "حدث خطأ في الخادم." : error.message });
-  }
-});
-
-server.listen(PORT, () => {
-  console.log(`Viora chat is running at http://localhost:${PORT}`);
-});
