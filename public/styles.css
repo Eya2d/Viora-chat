@@ -202,7 +202,7 @@ textarea {
   max-height: 120px;
   padding: 11px 12px;
   display: block;
-  height: 45px;
+  height: 45px !important;
 }
 
 input:focus,
