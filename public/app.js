@@ -91,6 +91,17 @@ function getDeviceId() {
   return id;
 }
 
+function storeRememberSession(user, rememberToken) {
+  if (!user || !rememberToken) return;
+  localStorage.setItem("vioraRememberUserId", user.id);
+  localStorage.setItem("vioraRememberToken", rememberToken);
+}
+
+function clearRememberSession() {
+  localStorage.removeItem("vioraRememberUserId");
+  localStorage.removeItem("vioraRememberToken");
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: options.body instanceof FormData ? undefined : { "Content-Type": "application/json" },
@@ -567,8 +578,30 @@ function currentRecipientId() {
 
 async function loadMe() {
   const { user } = await api("/api/me");
-  setAuthenticated(user);
-  if (user) await loadUsers();
+  if (user) {
+    setAuthenticated(user);
+    await loadUsers();
+    return;
+  }
+
+  const userId = localStorage.getItem("vioraRememberUserId");
+  const rememberToken = localStorage.getItem("vioraRememberToken");
+  if (!userId || !rememberToken) {
+    setAuthenticated(null);
+    return;
+  }
+
+  try {
+    const remembered = await api("/api/remember", {
+      method: "POST",
+      body: JSON.stringify({ userId, rememberToken })
+    });
+    setAuthenticated(remembered.user);
+    await loadUsers();
+  } catch {
+    clearRememberSession();
+    setAuthenticated(null);
+  }
 }
 
 async function loadUsers() {
@@ -651,7 +684,8 @@ els.loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
     const data = Object.fromEntries(new FormData(els.loginForm));
-    const { user } = await api("/api/login", { method: "POST", body: JSON.stringify(data) });
+    const { user, rememberToken } = await api("/api/login", { method: "POST", body: JSON.stringify(data) });
+    storeRememberSession(user, rememberToken);
     setAuthenticated(user);
     await loadUsers();
     showToast("تم تسجيل الدخول.");
@@ -665,7 +699,8 @@ els.registerForm.addEventListener("submit", async (event) => {
   try {
     const data = Object.fromEntries(new FormData(els.registerForm));
     data.deviceId = state.deviceId;
-    const { user } = await api("/api/register", { method: "POST", body: JSON.stringify(data) });
+    const { user, rememberToken } = await api("/api/register", { method: "POST", body: JSON.stringify(data) });
+    storeRememberSession(user, rememberToken);
     setAuthenticated(user);
     await loadUsers();
     showToast("تم إنشاء الحساب.");
@@ -692,6 +727,7 @@ els.profileForm.addEventListener("submit", async (event) => {
 
 els.logoutButton.addEventListener("click", async () => {
   await api("/api/logout", { method: "POST", body: JSON.stringify({}) });
+  clearRememberSession();
   setAuthenticated(null);
   showToast("تم تسجيل الخروج.");
 });
