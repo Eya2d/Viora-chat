@@ -23,6 +23,8 @@ const state = {
   recorderAnimation: null,
   recorderAnalyser: null,
   recordingCancelled: false,
+  recordingStopResolve: null,
+  fallbackRecorder: null,
   language: localStorage.getItem("vioraLanguage") || "ar",
   deviceId: getDeviceId()
 };
@@ -320,6 +322,10 @@ function canSeeRealtimeMessage(message) {
   return message.userId === state.user.id || message.recipientId === state.user.id;
 }
 
+function isChatPageVisible() {
+  return !els.chatPage.classList.contains("hidden");
+}
+
 function formatDateSeparator(value) {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return "";
@@ -477,11 +483,16 @@ function renderUsers() {
   els.usersList.textContent = "";
   if (!state.user) return;
   const generalUnread = state.unread.get("general") || 0;
+  const generalTyping = state.typing.get("general");
   const generalBadge = els.generalChatButton.querySelector("em");
+  const generalSmall = els.generalChatButton.querySelector("small");
   if (generalBadge) {
     generalBadge.classList.toggle("unread-dot", generalUnread > 0);
     generalBadge.textContent = generalUnread > 0 ? String(generalUnread) : t("now");
     generalBadge.title = generalUnread > 0 ? `${generalUnread} ${t("newMessages")}` : t("now");
+  }
+  if (generalSmall) {
+    generalSmall.textContent = generalTyping ? (generalTyping.kind === "upload" ? t("uploading") : t("typing")) : t("generalChatDesc");
   }
 
   const query = normalizeForSearch(state.search);
@@ -501,15 +512,17 @@ function renderUsers() {
   }
 
   users.forEach((user) => {
-    const unread = state.unread.get(directConversationId(state.user.id, user.id)) || 0;
+    const conversationId = directConversationId(state.user.id, user.id);
+    const unread = state.unread.get(conversationId) || 0;
+    const typing = state.typing.get(conversationId);
     const row = document.createElement("button");
-    row.className = `chat-row user-row${unread ? " has-unread" : ""}`;
+    row.className = `chat-row user-row${unread ? " has-unread" : ""}${typing ? " is-typing" : ""}`;
     row.type = "button";
     row.innerHTML = `
       <span class="avatar" data-avatar-user="${escapeHtml(user.id)}">${escapeHtml(initials(user.name))}</span>
       <span>
         <strong>${escapeHtml(user.name)}</strong>
-        <small>@${escapeHtml(user.username)} · ${escapeHtml(user.about || t("available"))}</small>
+        <small>${typing ? escapeHtml(typing.kind === "upload" ? t("uploading") : t("typing")) : `@${escapeHtml(user.username)} · ${escapeHtml(user.about || t("available"))}`}</small>
       </span>
       <em class="${unread ? "unread-dot" : ""}" title="${unread ? `${unread} ${t("newMessages")}` : escapeHtml(t("private"))}">${unread ? unread : escapeHtml(t("private"))}</em>
     `;
@@ -560,14 +573,17 @@ function handleTyping(payload) {
   if (!payload.active) {
     state.typing.delete(conversationId);
     updateChatHeader();
+    renderUsers();
     return;
   }
   state.typing.set(conversationId, payload);
   state.typingTimers.set(conversationId, setTimeout(() => {
     state.typing.delete(conversationId);
     updateChatHeader();
+    renderUsers();
   }, 3500));
   updateChatHeader();
+  renderUsers();
 }
 
 function addMessage(message) {
@@ -756,7 +772,7 @@ function openMessageSearchBar() {
 }
 
 function clearAttachment() {
-  if (state.recorder) {
+  if (state.recorder || state.fallbackRecorder) {
     stopRecording(true);
     return;
   }
@@ -1206,8 +1222,9 @@ function startRecordingMeter(stream) {
 }
 
 function finishRecording(blob) {
-  const extension = blob.type.includes("ogg") ? "ogg" : blob.type.includes("mp4") ? "m4a" : "webm";
-  const file = new File([blob], `voice-${Date.now()}.${extension}`, { type: blob.type || "audio/webm" });
+  const type = blob.type || "audio/webm";
+  const extension = type.includes("ogg") ? "ogg" : type.includes("mp4") ? "m4a" : type.includes("mpeg") ? "mp3" : "webm";
+  const file = new File([blob], `voice-${Date.now()}.${extension}`, { type });
   state.mediaFile = file;
   els.mediaInput.value = "";
   els.mediaPreview.classList.remove("hidden");
@@ -1218,8 +1235,76 @@ function finishRecording(blob) {
   els.mediaPreview.querySelector("button").addEventListener("click", clearAttachment);
 }
 
+function encodeWav(chunks, sampleRate) {
+  const length = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const samples = new Float32Array(length);
+  let offset = 0;
+  chunks.forEach((chunk) => {
+    samples.set(chunk, offset);
+    offset += chunk.length;
+  });
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+  const writeString = (position, value) => {
+    for (let i = 0; i < value.length; i += 1) view.setUint8(position + i, value.charCodeAt(i));
+  };
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(36, "data");
+  view.setUint32(40, samples.length * 2, true);
+  let index = 44;
+  for (let i = 0; i < samples.length; i += 1) {
+    const sample = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(index, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+    index += 2;
+  }
+  return new Blob([buffer], { type: "audio/wav" });
+}
+
+function setRecordingUi(active) {
+  els.recordButton.classList.toggle("recording", active);
+  els.recordButton.innerHTML = active ? '<ion-icon name="stop"></ion-icon>' : '<ion-icon name="mic"></ion-icon>';
+}
+
+function cleanupRecording(stream) {
+  stopRecordingPreview();
+  stream?.getTracks().forEach((track) => track.stop());
+  setRecordingUi(false);
+}
+
+function startFallbackRecording(stream) {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) throw new Error("No audio context");
+  const ctx = state.audioContext || new AudioContext();
+  state.audioContext = ctx;
+  const source = ctx.createMediaStreamSource(stream);
+  const processor = ctx.createScriptProcessor(4096, 1, 1);
+  const chunks = [];
+  processor.onaudioprocess = (event) => {
+    chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+  };
+  source.connect(processor);
+  processor.connect(ctx.destination);
+  state.fallbackRecorder = { stream, source, processor, chunks, sampleRate: ctx.sampleRate };
+  state.recorderStream = stream;
+  state.recordingCancelled = false;
+  setRecordingUi(true);
+  renderRecordingPreview();
+  startRecordingMeter(stream);
+  sendTyping(true, "upload");
+}
+
 async function startRecording() {
-  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+  if (!navigator.mediaDevices?.getUserMedia) {
     showToast(t("microphoneError"));
     return;
   }
@@ -1227,28 +1312,44 @@ async function startRecording() {
     pauseAllMedia();
     clearAttachment();
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const recorder = new MediaRecorder(stream);
+    if (!window.MediaRecorder) {
+      startFallbackRecording(stream);
+      return;
+    }
+    const preferredTypes = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/ogg;codecs=opus",
+      "audio/ogg",
+      "audio/mp4"
+    ];
+    const mimeType = preferredTypes.find((type) => MediaRecorder.isTypeSupported?.(type));
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
     state.recorder = recorder;
     state.recorderStream = stream;
     state.recorderChunks = [];
     state.recorderStartedAt = Date.now();
-    els.recordButton.classList.add("recording");
-    els.recordButton.innerHTML = '<ion-icon name="stop"></ion-icon>';
+    state.recordingCancelled = false;
+    setRecordingUi(true);
     recorder.addEventListener("dataavailable", (event) => {
       if (event.data?.size) state.recorderChunks.push(event.data);
     });
     recorder.addEventListener("stop", () => {
       const blob = new Blob(state.recorderChunks, { type: recorder.mimeType || "audio/webm" });
       const cancelled = state.recordingCancelled;
-      stopRecordingPreview();
-      stream.getTracks().forEach((track) => track.stop());
+      cleanupRecording(stream);
       state.recorder = null;
       state.recorderStream = null;
       state.recorderChunks = [];
       state.recordingCancelled = false;
-      els.recordButton.classList.remove("recording");
-      els.recordButton.innerHTML = '<ion-icon name="mic"></ion-icon>';
-      if (!cancelled && blob.size) finishRecording(blob);
+      if (cancelled) {
+        els.mediaPreview.classList.add("hidden");
+        els.mediaPreview.textContent = "";
+      } else if (blob.size) {
+        finishRecording(blob);
+      }
+      state.recordingStopResolve?.();
+      state.recordingStopResolve = null;
     });
     recorder.start();
     renderRecordingPreview();
@@ -1260,10 +1361,33 @@ async function startRecording() {
 }
 
 function stopRecording(cancel = false) {
-  if (!state.recorder) return;
+  if (state.fallbackRecorder) {
+    state.recordingCancelled = cancel;
+    sendTyping(false, "upload");
+    const fallback = state.fallbackRecorder;
+    state.fallbackRecorder = null;
+    fallback.processor.disconnect();
+    fallback.source.disconnect();
+    const blob = encodeWav(fallback.chunks, fallback.sampleRate);
+    cleanupRecording(fallback.stream);
+    state.recorderStream = null;
+    if (cancel) {
+      els.mediaPreview.classList.add("hidden");
+      els.mediaPreview.textContent = "";
+    } else if (blob.size) {
+      finishRecording(blob);
+    }
+    state.recordingCancelled = false;
+    return Promise.resolve();
+  }
+  if (!state.recorder) return Promise.resolve();
   state.recordingCancelled = cancel;
   sendTyping(false, "upload");
+  const done = new Promise((resolve) => {
+    state.recordingStopResolve = resolve;
+  });
   state.recorder.stop();
+  return done;
 }
 
 function toggleRecording() {
@@ -1410,7 +1534,7 @@ function startEvents() {
     if (!canSeeRealtimeMessage(message)) return;
     const mine = message.userId === state.user?.id;
     const conversationId = messageConversationId(message);
-    if (messageBelongsToActiveChat(message)) {
+    if (isChatPageVisible() && messageBelongsToActiveChat(message)) {
       addMessage({ ...message, mine });
       if (!mine) markActiveChatRead();
       if (!mine) playTone("receive");
@@ -1761,6 +1885,7 @@ els.messageInput.addEventListener("input", () => {
 els.composer.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!state.user) return showToast(t("loginFirst"));
+  if (state.recorder || state.fallbackRecorder) await stopRecording();
   const text = els.messageInput.value.trim();
   if (!text && !state.mediaFile) return;
   els.composer.querySelector(".send-button").disabled = true;
