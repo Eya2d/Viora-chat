@@ -27,6 +27,7 @@ const MIME_TYPES = {
   ".mp4": "video/mp4",
   ".webm": "video/webm",
   ".mp3": "audio/mpeg",
+  ".m4a": "audio/mp4",
   ".wav": "audio/wav",
   ".ogg": "audio/ogg",
   ".pdf": "application/pdf",
@@ -44,6 +45,8 @@ const allowedAttachments = new Set([
   "video/webm",
   "audio/mpeg",
   "audio/mp3",
+  "audio/mp4",
+  "audio/x-m4a",
   "audio/wav",
   "audio/ogg",
   "audio/webm",
@@ -350,6 +353,7 @@ function getMessages(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const recipientId = String(url.searchParams.get("with") || "");
   const conversationId = recipientId ? directConversationId(auth.user.id, recipientId) : "general";
+  markConversationMessages(auth.user.id, conversationId, "deliveredAt");
   const messages = db.messages
     .filter((message) => (message.conversationId || "general") === conversationId)
     .slice(-300)
@@ -391,6 +395,36 @@ function canEditMessage(userId, message) {
   return Number.isFinite(createdAt) && Date.now() - createdAt <= 5 * 60 * 1000;
 }
 
+function messageStatusPayload(message) {
+  return {
+    id: message.id,
+    userId: message.userId,
+    recipientId: message.recipientId || null,
+    conversationId: message.conversationId || "general",
+    deliveredAt: message.deliveredAt || null,
+    readAt: message.readAt || null
+  };
+}
+
+function markConversationMessages(userId, conversationId, field) {
+  const now = new Date().toISOString();
+  const changed = [];
+  db.messages.forEach((message) => {
+    if ((message.conversationId || "general") !== conversationId) return;
+    if (message.userId === userId) return;
+    if (message.recipientId && message.recipientId !== userId) return;
+    if (field === "readAt" && !message.deliveredAt) message.deliveredAt = now;
+    if (message[field]) return;
+    message[field] = now;
+    changed.push(message);
+  });
+  if (changed.length) {
+    saveDb();
+    changed.forEach((message) => broadcast("messageStatus", messageStatusPayload(message)));
+  }
+  return changed;
+}
+
 async function createMessage(req, res) {
   const auth = requireAuth(req, res);
   if (!auth) return;
@@ -409,12 +443,46 @@ async function createMessage(req, res) {
     avatar: auth.user.avatar || "",
     text: text.slice(0, 2000),
     media: null,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    deliveredAt: null,
+    readAt: null
   };
   db.messages.push(message);
   saveDb();
   broadcast("message", message);
   json(res, 201, { message: { ...message, mine: true } });
+}
+
+async function updateTyping(req, res) {
+  const auth = requireAuth(req, res);
+  if (!auth) return;
+  const payload = JSON.parse((await getBody(req)).toString("utf8") || "{}");
+  const recipientId = String(payload.recipientId || "");
+  const kind = payload.kind === "upload" ? "upload" : "typing";
+  const active = Boolean(payload.active);
+  if (recipientId && !canMessageUser(recipientId)) return json(res, 404, { error: "هذا الحساب غير موجود." });
+  broadcast("typing", {
+    userId: auth.user.id,
+    recipientId: recipientId || null,
+    conversationId: recipientId ? directConversationId(auth.user.id, recipientId) : "general",
+    name: auth.user.name,
+    username: auth.user.username,
+    kind,
+    active,
+    at: new Date().toISOString()
+  });
+  json(res, 200, { ok: true });
+}
+
+async function markRead(req, res) {
+  const auth = requireAuth(req, res);
+  if (!auth) return;
+  const payload = JSON.parse((await getBody(req)).toString("utf8") || "{}");
+  const recipientId = String(payload.recipientId || "");
+  if (recipientId && !canMessageUser(recipientId)) return json(res, 404, { error: "هذا الحساب غير موجود." });
+  const conversationId = recipientId ? directConversationId(auth.user.id, recipientId) : "general";
+  const changed = markConversationMessages(auth.user.id, conversationId, "readAt");
+  json(res, 200, { ok: true, updated: changed.length });
 }
 
 async function deleteMessage(req, res, messageId) {
@@ -474,7 +542,9 @@ async function forwardMessage(req, res, messageId) {
       author: source.author,
       username: source.username
     },
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    deliveredAt: null,
+    readAt: null
   }));
   db.messages.push(...created);
   saveDb();
@@ -517,7 +587,9 @@ async function uploadMedia(req, res) {
       url: storedFile.url,
       size: storedFile.size
     },
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    deliveredAt: null,
+    readAt: null
   };
   db.messages.push(message);
   saveDb();
@@ -667,6 +739,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/api/users") return getUsers(req, res);
     if (req.method === "POST" && url.pathname === "/api/profile") return updateProfile(req, res);
     if (req.method === "POST" && url.pathname === "/api/messages") return createMessage(req, res);
+    if (req.method === "POST" && url.pathname === "/api/typing") return updateTyping(req, res);
+    if (req.method === "POST" && url.pathname === "/api/read") return markRead(req, res);
     const deleteMatch = /^\/api\/messages\/([^/]+)\/delete$/.exec(url.pathname);
     if (req.method === "POST" && deleteMatch) return deleteMessage(req, res, deleteMatch[1]);
     const editMatch = /^\/api\/messages\/([^/]+)\/edit$/.exec(url.pathname);
