@@ -114,6 +114,12 @@ button {
   color: #fff;
   background: var(--green);
   font-weight: 800;
+  background-position: center;
+  background-size: cover;
+}
+
+.avatar.has-image {
+  color: transparent;
 }
 
 .logo-mark {
@@ -156,7 +162,7 @@ button {
   grid-template-columns: 1fr 1fr;
   gap: 6px;
   padding: 4px;
-  border-radius: 8px;
+  border-radius: 25px;
   background: var(--soft);
 }
 
@@ -167,7 +173,7 @@ button {
 .auth-tabs button,
 .tabs-bar button {
   border: 0;
-  border-radius: 6px;
+  border-radius: 25px;
   padding: 10px;
   color: var(--muted);
   background: transparent;
