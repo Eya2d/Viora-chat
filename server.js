@@ -28,10 +28,14 @@ const MIME_TYPES = {
   ".webm": "video/webm",
   ".mp3": "audio/mpeg",
   ".wav": "audio/wav",
-  ".ogg": "audio/ogg"
+  ".ogg": "audio/ogg",
+  ".pdf": "application/pdf",
+  ".txt": "text/plain; charset=utf-8",
+  ".doc": "application/msword",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 };
 
-const allowedMedia = new Set([
+const allowedAttachments = new Set([
   "image/jpeg",
   "image/png",
   "image/gif",
@@ -42,7 +46,11 @@ const allowedMedia = new Set([
   "audio/mp3",
   "audio/wav",
   "audio/ogg",
-  "audio/webm"
+  "audio/webm",
+  "application/pdf",
+  "text/plain",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 ]);
 
 let db = { users: [], sessions: [], messages: [] };
@@ -167,6 +175,13 @@ function sanitizeFileName(name) {
   return path.basename(String(name || "upload")).replace(/[^\w.\-]+/g, "_").slice(0, 80);
 }
 
+function inferMime(filename, fallback) {
+  if (fallback && fallback !== "application/octet-stream") return fallback;
+  const ext = path.extname(filename || "").toLowerCase();
+  const inferred = MIME_TYPES[ext];
+  return inferred ? inferred.split(";")[0] : fallback;
+}
+
 function parseMultipart(buffer, contentType) {
   const boundaryMatch = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType || "");
   if (!boundaryMatch) throw Object.assign(new Error("Missing multipart boundary"), { status: 400 });
@@ -190,7 +205,8 @@ function parseMultipart(buffer, contentType) {
     const filename = disposition[2];
     const typeMatch = /content-type:\s*([^\r\n]+)/i.exec(rawHeaders);
     if (filename) {
-      files.push({ name, filename, type: (typeMatch && typeMatch[1].trim()) || "application/octet-stream", content });
+      const rawType = (typeMatch && typeMatch[1].trim()) || "application/octet-stream";
+      files.push({ name, filename, type: inferMime(filename, rawType), content });
     } else {
       fields[name] = content.toString("utf8");
     }
@@ -402,12 +418,18 @@ async function uploadMedia(req, res) {
   const recipientId = String(fields.recipientId || "");
   if (!file) return json(res, 400, { error: "اختر ملفًا للإرسال." });
   if (recipientId && !canMessageUser(recipientId)) return json(res, 404, { error: "هذا الحساب غير موجود." });
-  if (!allowedMedia.has(file.type)) return json(res, 400, { error: "يدعم الموقع الصور والفيديوهات والمقاطع الصوتية فقط." });
+  if (!allowedAttachments.has(file.type)) return json(res, 400, { error: "يدعم الموقع الصور والفيديو والصوت وملفات PDF وTXT وWord فقط." });
   const extension = path.extname(file.filename) || `.${file.type.split("/")[1] || "bin"}`;
   const storedName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}-${sanitizeFileName(file.filename || `media${extension}`)}`;
   const diskPath = path.join(UPLOAD_DIR, storedName);
   fs.writeFileSync(diskPath, file.content);
-  const mediaType = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : "audio";
+  const mediaType = file.type.startsWith("image/")
+    ? "image"
+    : file.type.startsWith("video/")
+      ? "video"
+      : file.type.startsWith("audio/")
+        ? "audio"
+        : "document";
   const message = {
     id: crypto.randomUUID(),
     userId: auth.user.id,
