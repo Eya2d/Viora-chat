@@ -28,6 +28,7 @@
   --bubble: #202c33;
   --bubble-mine: #005c4b;
   --shadow: 0 24px 70px rgba(0, 0, 0, 0.36);
+  --xxxx: #ffffff21;
 }
 
 * {
@@ -166,6 +167,7 @@ button {
 .tabs-bar button.active {
   color: var(--text);
   background: var(--panel);
+  background-color: var(--xxxx);
   box-shadow: 0 1px 5px rgba(0, 0, 0, 0.08);
 }
 
