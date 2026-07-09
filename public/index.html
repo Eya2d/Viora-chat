@@ -120,7 +120,7 @@
         <div class="messages" id="messages" aria-live="polite"></div>
 
         <form class="composer" id="composer">
-          <input id="mediaInput" name="media" type="file" accept="image/*,video/*,audio/*" hidden>
+          <input id="mediaInput" name="media" type="file" accept="image/*,video/*,audio/*,.pdf,.txt,.doc,.docx,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
           <button class="tool-button" id="attachButton" type="button" title="إرفاق ملف" aria-label="إرفاق ملف">📎</button>
           <div class="message-box">
             <div id="mediaPreview" class="media-preview hidden"></div>
@@ -220,6 +220,16 @@
       </header>
       <textarea id="editMessageInput" rows="4" maxlength="2000"></textarea>
       <button class="primary" type="button" id="saveEditButton">حفظ التعديل</button>
+    </section>
+    <section class="viewer-modal hidden" id="viewerModal" aria-label="عرض الملف">
+      <header>
+        <h2 id="viewerTitle">عرض الملف</h2>
+        <div>
+          <a id="viewerOpenLink" href="#" target="_blank" rel="noopener">فتح</a>
+          <button type="button" id="closeViewerModal" aria-label="إغلاق">×</button>
+        </div>
+      </header>
+      <div class="viewer-body" id="viewerBody"></div>
     </section>
     <script src="/app.js"></script>
   </body>
