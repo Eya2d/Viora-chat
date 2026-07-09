@@ -200,7 +200,8 @@ textarea {
   resize: none;
   min-height: 42px;
   max-height: 120px;
-  padding: 11px 12px;
+  padding: 0px 12px;
+  align-content: space-evenly;
   display: block;
   height: 45px !important;
 }
