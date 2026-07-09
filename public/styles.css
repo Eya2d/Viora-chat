@@ -37,6 +37,7 @@
 
 body {
   margin: 0;
+  user-select: none;
   min-height: 100vh;
   height: 100vh;
   display: flex;
@@ -848,12 +849,15 @@ textarea:focus {
 .viewer-modal header a {
   display: grid;
   place-items: center;
-  min-height: 36px;
-  padding: 0 12px;
-  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
   color: #fff;
   text-decoration: none;
   background: var(--green);
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1;
 }
 
 .viewer-body {
@@ -901,13 +905,10 @@ textarea:focus {
   color: var(--muted);
 }
 
-.document-view-card a {
+.document-view-card span {
   justify-self: start;
-  padding: 10px 14px;
-  border-radius: 8px;
-  color: #fff;
-  text-decoration: none;
-  background: var(--green);
+  color: var(--muted);
+  line-height: 1.6;
 }
 
 .share-users {
@@ -969,7 +970,7 @@ textarea:focus {
 @media (max-width: 760px) {
   .phone-shell {
     width: 100vw;
-    height: 100dvh;
+    height: 100vh; /*dvh*/
     box-shadow: none;
   }
 
