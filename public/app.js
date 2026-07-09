@@ -13,6 +13,7 @@ const state = {
 };
 
 const els = {
+  loadingPage: document.querySelector("#loadingPage"),
   authPage: document.querySelector("#authPage"),
   accountsPage: document.querySelector("#accountsPage"),
   chatPage: document.querySelector("#chatPage"),
@@ -114,6 +115,7 @@ async function api(path, options = {}) {
 }
 
 function showPage(name) {
+  els.loadingPage.classList.toggle("hidden", name !== "loading");
   els.authPage.classList.toggle("hidden", name !== "auth");
   els.accountsPage.classList.toggle("hidden", name !== "accounts");
   els.chatPage.classList.toggle("hidden", name !== "chat");
