@@ -38,8 +38,8 @@
 body {
   margin: 0;
   user-select: none;
-  min-height: 100vh;
-  height: 100vh;
+  min-height: 100dvh;
+  height: 100dvh;
   display: flex;
   align-items: center;
   color: var(--text);
