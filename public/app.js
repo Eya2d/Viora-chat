@@ -586,20 +586,30 @@ async function loadMe() {
 
   const userId = localStorage.getItem("vioraRememberUserId");
   const rememberToken = localStorage.getItem("vioraRememberToken");
-  if (!userId || !rememberToken) {
-    setAuthenticated(null);
-    return;
+
+  if (userId && rememberToken) {
+    try {
+      const remembered = await api("/api/remember", {
+        method: "POST",
+        body: JSON.stringify({ userId, rememberToken })
+      });
+      setAuthenticated(remembered.user);
+      await loadUsers();
+      return;
+    } catch {
+      clearRememberSession();
+    }
   }
 
   try {
-    const remembered = await api("/api/remember", {
+    const deviceSession = await api("/api/device-login", {
       method: "POST",
-      body: JSON.stringify({ userId, rememberToken })
+      body: JSON.stringify({ deviceId: state.deviceId })
     });
-    setAuthenticated(remembered.user);
+    storeRememberSession(deviceSession.user, deviceSession.rememberToken);
+    setAuthenticated(deviceSession.user);
     await loadUsers();
   } catch {
-    clearRememberSession();
     setAuthenticated(null);
   }
 }
