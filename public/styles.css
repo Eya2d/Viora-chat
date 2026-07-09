@@ -649,6 +649,7 @@ textarea:focus {
   display: grid;
   grid-template-rows: auto auto minmax(0, auto) minmax(0, 1fr);
   overflow: auto;
+  background: white;
 }
 
 .settings-header {
@@ -671,7 +672,7 @@ textarea:focus {
 
 .settings-section {
   padding: 16px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid #0000; /*1px solid var(--line)*/
   background: var(--panel);
 }
 
