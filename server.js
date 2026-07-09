@@ -210,6 +210,18 @@ function inferMime(filename, fallback) {
   return inferred ? inferred.split(";")[0] : fallback;
 }
 
+function storeUploadedFile(file) {
+  const extension = path.extname(file.filename) || `.${file.type.split("/")[1] || "bin"}`;
+  const storedName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}-${sanitizeFileName(file.filename || `upload${extension}`)}`;
+  const diskPath = path.join(UPLOAD_DIR, storedName);
+  fs.writeFileSync(diskPath, file.content);
+  return {
+    name: sanitizeFileName(file.filename),
+    url: `/uploads/${storedName}`,
+    size: file.content.length
+  };
+}
+
 function parseMultipart(buffer, contentType) {
   const boundaryMatch = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType || "");
   if (!boundaryMatch) throw Object.assign(new Error("Missing multipart boundary"), { status: 400 });
@@ -394,6 +406,7 @@ async function createMessage(req, res) {
     conversationId: recipientId ? directConversationId(auth.user.id, recipientId) : "general",
     author: auth.user.name,
     username: auth.user.username,
+    avatar: auth.user.avatar || "",
     text: text.slice(0, 2000),
     media: null,
     createdAt: new Date().toISOString()
@@ -453,6 +466,7 @@ async function forwardMessage(req, res, messageId) {
     conversationId: directConversationId(auth.user.id, recipientId),
     author: auth.user.name,
     username: auth.user.username,
+    avatar: auth.user.avatar || "",
     text: source.text || "",
     media: source.media ? { ...source.media } : null,
     forwardedFrom: {
@@ -479,10 +493,7 @@ async function uploadMedia(req, res) {
   if (!file) return json(res, 400, { error: "اختر ملفًا للإرسال." });
   if (recipientId && !canMessageUser(recipientId)) return json(res, 404, { error: "هذا الحساب غير موجود." });
   if (!allowedAttachments.has(file.type)) return json(res, 400, { error: "يدعم الموقع الصور والفيديو والصوت وملفات PDF وTXT وWord فقط." });
-  const extension = path.extname(file.filename) || `.${file.type.split("/")[1] || "bin"}`;
-  const storedName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}-${sanitizeFileName(file.filename || `media${extension}`)}`;
-  const diskPath = path.join(UPLOAD_DIR, storedName);
-  fs.writeFileSync(diskPath, file.content);
+  const storedFile = storeUploadedFile(file);
   const mediaType = file.type.startsWith("image/")
     ? "image"
     : file.type.startsWith("video/")
@@ -497,13 +508,14 @@ async function uploadMedia(req, res) {
     conversationId: recipientId ? directConversationId(auth.user.id, recipientId) : "general",
     author: auth.user.name,
     username: auth.user.username,
+    avatar: auth.user.avatar || "",
     text: caption,
     media: {
       type: mediaType,
       mime: file.type,
-      name: sanitizeFileName(file.filename),
-      url: `/uploads/${storedName}`,
-      size: file.content.length
+      name: storedFile.name,
+      url: storedFile.url,
+      size: storedFile.size
     },
     createdAt: new Date().toISOString()
   };
@@ -516,7 +528,17 @@ async function uploadMedia(req, res) {
 async function updateProfile(req, res) {
   const auth = requireAuth(req, res);
   if (!auth) return;
-  const payload = JSON.parse((await getBody(req)).toString("utf8") || "{}");
+  const isMultipart = String(req.headers["content-type"] || "").includes("multipart/form-data");
+  let payload = {};
+  let avatarFile = null;
+  if (isMultipart) {
+    const buffer = await getBody(req, MAX_UPLOAD_BYTES);
+    const parsed = parseMultipart(buffer, req.headers["content-type"]);
+    payload = parsed.fields;
+    avatarFile = parsed.files.find((file) => file.name === "avatar") || null;
+  } else {
+    payload = JSON.parse((await getBody(req)).toString("utf8") || "{}");
+  }
   const password = String(payload.password || "");
   if (!verifyPassword(password, auth.user.passwordHash)) {
     return json(res, 401, { error: "كلمة المرور غير صحيحة." });
@@ -547,11 +569,18 @@ async function updateProfile(req, res) {
   auth.user.about = about || "متاح";
   auth.user.updatedAt = new Date().toISOString();
   if (newPassword) auth.user.passwordHash = hashPassword(newPassword);
+  if (avatarFile && avatarFile.content.length) {
+    if (!avatarFile.type.startsWith("image/")) {
+      return json(res, 400, { error: "صورة الحساب يجب أن تكون ملف صورة فقط." });
+    }
+    auth.user.avatar = storeUploadedFile(avatarFile).url;
+  }
 
   db.messages.forEach((message) => {
     if (message.userId === auth.user.id) {
       message.author = auth.user.name;
       message.username = auth.user.username;
+      message.avatar = auth.user.avatar || "";
     }
   });
   saveDb();
@@ -626,3 +655,18 @@ const server = http.createServer(async (req, res) => {
     const deleteMatch = /^\/api\/messages\/([^/]+)\/delete$/.exec(url.pathname);
     if (req.method === "POST" && deleteMatch) return deleteMessage(req, res, deleteMatch[1]);
     const editMatch = /^\/api\/messages\/([^/]+)\/edit$/.exec(url.pathname);
+    if (req.method === "POST" && editMatch) return editMessage(req, res, editMatch[1]);
+    const forwardMatch = /^\/api\/messages\/([^/]+)\/forward$/.exec(url.pathname);
+    if (req.method === "POST" && forwardMatch) return forwardMessage(req, res, forwardMatch[1]);
+    if (req.method === "POST" && url.pathname === "/api/upload") return uploadMedia(req, res);
+    if (req.method === "GET" && url.pathname === "/api/events") return stream(req, res);
+    return serveStatic(req, res);
+  } catch (error) {
+    const status = error.status || 500;
+    json(res, status, { error: status === 500 ? "حدث خطأ في الخادم." : error.message });
+  }
+});
+
+server.listen(PORT, () => {
+  console.log(`Viora chat is running at http://localhost:${PORT}`);
+});
