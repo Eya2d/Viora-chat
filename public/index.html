@@ -13,54 +13,54 @@
     <main class="phone-shell">
       <section class="page loading-page" id="loadingPage">
         <span class="logo-mark">V</span>
-        <p>جاري فتح Viora...</p>
+        <p data-i18n="loading">جاري فتح Viora...</p>
       </section>
 
       <section class="page auth-page hidden" id="authPage">
         <header class="auth-hero">
           <span class="logo-mark">V</span>
           <h1>Viora</h1>
-          <p>تواصل، صور، فيديو، صوت، ومحادثات خاصة.</p>
+          <p data-i18n="heroText">تواصل، صور، فيديو، صوت، ومحادثات خاصة.</p>
         </header>
 
         <div class="auth-card">
           <div class="auth-tabs" role="tablist">
-            <button class="active" data-auth-tab="login" type="button">تسجيل الدخول</button>
-            <button data-auth-tab="register" type="button">إنشاء حساب</button>
+            <button class="active" data-auth-tab="login" type="button" data-i18n="loginTab">تسجيل الدخول</button>
+            <button data-auth-tab="register" type="button" data-i18n="registerTab">إنشاء حساب</button>
           </div>
 
           <form id="loginForm" class="auth-form">
             <label>
-              البريد أو اسم المستخدم
+              <span data-i18n="identifier">البريد أو اسم المستخدم</span>
               <input name="identifier" autocomplete="username" required>
             </label>
             <label>
-              كلمة المرور
+              <span data-i18n="password">كلمة المرور</span>
               <input name="password" type="password" autocomplete="current-password" required>
             </label>
-            <button class="primary" type="submit">دخول</button>
+            <button class="primary" type="submit" data-i18n="loginButton">دخول</button>
           </form>
 
           <form id="registerForm" class="auth-form hidden">
             <label>
-              الاسم الظاهر
+              <span data-i18n="displayName">الاسم الظاهر</span>
               <input name="name" autocomplete="name" minlength="2" required>
             </label>
             <label>
-              اسم المستخدم
+              <span data-i18n="username">اسم المستخدم</span>
               <input name="username" autocomplete="username" minlength="3" required>
             </label>
             <label>
-              البريد الإلكتروني
+              <span data-i18n="email">البريد الإلكتروني</span>
               <input name="email" type="email" autocomplete="email" required>
             </label>
             <label>
-              كلمة المرور
+              <span data-i18n="password">كلمة المرور</span>
               <input name="password" type="password" autocomplete="new-password" minlength="6" required>
             </label>
-            <button class="primary" type="submit">إنشاء الحساب</button>
+            <button class="primary" type="submit" data-i18n="createAccountButton">إنشاء الحساب</button>
           </form>
-          <p class="notice" id="authNotice">حساب واحد لكل بريد، اسم مستخدم، وجهاز.</p>
+          <p class="notice" id="authNotice" data-i18n="authNotice">حساب واحد لكل بريد، اسم مستخدم، وجهاز.</p>
         </div>
       </section>
 
@@ -68,143 +68,163 @@
         <header class="main-topbar">
           <div>
             <h1>Viora chat</h1>
-            <p id="accountLabel">متصل</p>
+            <p id="accountLabel" data-i18n="connected">متصل</p>
           </div>
           <div class="top-actions">
-            <button class="icon-button ccvv" id="refreshButton" type="button" title="تحديث" aria-label="تحديث"><ion-icon name="refresh-outline"></ion-icon></button>
-            <button class="icon-button ccvv" id="menuButton" type="button" title="القائمة" aria-label="القائمة"><ion-icon name="ellipsis-vertical"></ion-icon></button>
+            <button class="icon-button ccvv" id="refreshButton" type="button" title="تحديث" aria-label="تحديث" data-i18n-title="refresh" data-i18n-aria="refresh"><ion-icon name="refresh-outline"></ion-icon></button>
+            <button class="icon-button ccvv" id="menuButton" type="button" title="القائمة" aria-label="القائمة" data-i18n-title="menu" data-i18n-aria="menu"><ion-icon name="ellipsis-vertical"></ion-icon></button>
             <div class="menu hidden" id="overflowMenu">
-              <button type="button" data-open-settings>الإعدادات</button>
-              <button type="button" id="logoutButton">تسجيل الخروج</button>
+              <button type="button" data-open-settings data-i18n="settings">الإعدادات</button>
+              <button type="button" id="logoutButton" data-i18n="logout">تسجيل الخروج</button>
             </div>
           </div>
         </header>
 
         <div class="search-wrap">
-          <input id="searchInput" type="search" placeholder="بحث في الحسابات" autocomplete="off">
+          <input id="searchInput" type="search" placeholder="بحث في الحسابات" autocomplete="off" data-i18n-placeholder="searchAccounts">
         </div>
 
         <nav class="tabs-bar" aria-label="أقسام واتساب">
-          <button class="active" type="button">الدردشات</button>
-          <button type="button">الحالات</button>
-          <button type="button">المكالمات</button>
+          <button class="active" type="button" data-i18n="chats">الدردشات</button>
+          <button type="button" data-i18n="status">الحالات</button>
+          <button type="button" data-i18n="calls">المكالمات</button>
         </nav>
 
         <section class="chat-list">
           <button class="chat-row active" id="generalChatButton" type="button">
             <span class="avatar group">ع</span>
             <span>
-              <strong>المحادثة العامة</strong>
-              <small>مجموعة عامة لكل المستخدمين</small>
+              <strong data-i18n="generalChat">المحادثة العامة</strong>
+              <small data-i18n="generalChatDesc">مجموعة عامة لكل المستخدمين</small>
             </span>
-            <em>الآن</em>
+            <em data-i18n="now">الآن</em>
           </button>
-          <div class="list-heading">الحسابات</div>
+          <div class="list-heading" data-i18n="accounts">الحسابات</div>
           <div class="users-list" id="usersList"></div>
         </section>
       </section>
 
       <section class="page chat-page hidden" id="chatPage">
         <header class="conversation-header">
-          <button class="icon-button ccvv back-button" id="backToAccounts" type="button" title="رجوع" aria-label="رجوع"><ion-icon name="chevron-back-outline"></ion-icon></button>
+          <button class="icon-button ccvv back-button" id="backToAccounts" type="button" title="رجوع" aria-label="رجوع" data-i18n-title="back" data-i18n-aria="back"><ion-icon name="chevron-back-outline"></ion-icon></button>
           <span class="avatar group" id="chatAvatar">ع</span>
           <div>
-            <h2 id="chatTitle">المحادثة العامة</h2>
-            <p id="statusLine">متصل الآن</p>
+            <h2 id="chatTitle" data-i18n="generalChat">المحادثة العامة</h2>
+            <p id="statusLine" data-i18n="allUsers">كل المستخدمين</p>
           </div>
-          <button class="icon-button ccvv" id="messageSearchButton" type="button" title="بحث" aria-label="بحث"><ion-icon name="search-outline"></ion-icon></button>
-          <button class="icon-button ccvv" id="chatMenuButton" type="button" title="مزيد" aria-label="مزيد"><ion-icon name="ellipsis-vertical"></ion-icon></button>
+          <button class="icon-button ccvv" id="messageSearchButton" type="button" title="بحث" aria-label="بحث" data-i18n-title="search" data-i18n-aria="search"><ion-icon name="search-outline"></ion-icon></button>
+          <button class="icon-button ccvv" id="chatMenuButton" type="button" title="مزيد" aria-label="مزيد" data-i18n-title="more" data-i18n-aria="more"><ion-icon name="ellipsis-vertical"></ion-icon></button>
           <div class="menu chat-menu hidden" id="chatMenu">
-            <button type="button" id="openMessageSearch">بحث في الرسائل</button>
-            <button type="button" id="scrollBottomButton">آخر رسالة</button>
+            <button type="button" id="openMessageSearch" data-i18n="searchMessages">بحث في الرسائل</button>
+            <button type="button" id="scrollBottomButton" data-i18n="lastMessage">آخر رسالة</button>
           </div>
         </header>
 
         <div class="message-search hidden" id="messageSearchBar">
-          <input id="messageSearchInput" type="search" placeholder="بحث في الرسائل" autocomplete="off">
-          <button type="button" id="closeMessageSearch">إغلاق</button>
+          <input id="messageSearchInput" type="search" placeholder="بحث في الرسائل" autocomplete="off" data-i18n-placeholder="searchMessages">
+          <button type="button" id="closeMessageSearch" data-i18n="close">إغلاق</button>
         </div>
 
         <div class="messages" id="messages" aria-live="polite"></div>
 
         <form class="composer" id="composer">
           <input id="mediaInput" name="media" type="file" accept="image/*,video/*,audio/*,.pdf,.txt,.doc,.docx,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
-          <button class="tool-button" id="attachButton" type="button" title="إرفاق ملف" aria-label="إرفاق ملف"><ion-icon name="attach-outline"></ion-icon></button>
+          <button class="tool-button" id="attachButton" type="button" title="إرفاق ملف" aria-label="إرفاق ملف" data-i18n-title="attachFile" data-i18n-aria="attachFile"><ion-icon name="attach-outline"></ion-icon></button>
           <div class="message-box">
             <div id="mediaPreview" class="media-preview hidden"></div>
-            <textarea id="messageInput" name="text" rows="1" placeholder="اكتب رسالة" maxlength="2000"></textarea>
+            <textarea id="messageInput" name="text" rows="1" placeholder="اكتب رسالة" maxlength="2000" data-i18n-placeholder="writeMessage"></textarea>
           </div>
-          <button class="tool-button" type="button" title="تسجيل صوت" aria-label="تسجيل صوت"><ion-icon name="mic"></ion-icon></button>
-          <button class="tool-button" id="composerMenuButton" type="button" title="خيارات الإرسال" aria-label="خيارات الإرسال"><ion-icon name="ellipsis-vertical"></ion-icon></button>
+          <button class="tool-button" id="recordButton" type="button" title="تسجيل صوت" aria-label="تسجيل صوت" data-i18n-title="recordAudio" data-i18n-aria="recordAudio"><ion-icon name="mic"></ion-icon></button>
+          <button class="tool-button" id="composerMenuButton" type="button" title="خيارات الإرسال" aria-label="خيارات الإرسال" data-i18n-title="sendOptions" data-i18n-aria="sendOptions"><ion-icon name="ellipsis-vertical"></ion-icon></button>
           <div class="menu composer-menu hidden" id="composerMenu">
-            <button type="button" id="composerSearchButton">بحث في الرسائل</button>
-            <button type="button" id="clearDraftButton">مسح الكتابة</button>
-            <button type="button" id="clearAttachmentButton">إزالة المرفق</button>
+            <button type="button" id="composerSearchButton" data-i18n="searchMessages">بحث في الرسائل</button>
+            <button type="button" id="clearDraftButton" data-i18n="clearDraft">مسح الكتابة</button>
+            <button type="button" id="clearAttachmentButton" data-i18n="removeAttachment">إزالة المرفق</button>
           </div>
-          <button class="send-button" type="submit" title="إرسال" aria-label="إرسال"><ion-icon name="send"></ion-icon></button>
+          <button class="send-button" type="submit" title="إرسال" aria-label="إرسال" data-i18n-title="send" data-i18n-aria="send"><ion-icon name="send"></ion-icon></button>
         </form>
       </section>
 
       <section class="page settings-page hidden" id="settingsPage">
         <header class="settings-header">
-          <button class="icon-button ccvv back-button" id="backFromSettings" type="button" title="رجوع" aria-label="رجوع"><ion-icon name="chevron-back-outline"></ion-icon></button>
-          <h1>الإعدادات</h1>
+          <button class="icon-button ccvv back-button" id="backFromSettings" type="button" title="رجوع" aria-label="رجوع" data-i18n-title="back" data-i18n-aria="back"><ion-icon name="chevron-back-outline"></ion-icon></button>
+          <h1 data-i18n="settings">الإعدادات</h1>
         </header>
 
         <div class="profile-summary">
           <span class="avatar" id="settingsAvatar">V</span>
           <div>
-            <strong id="settingsName">المستخدم</strong>
+            <strong id="settingsName" data-i18n="user">المستخدم</strong>
             <small id="settingsUsername">@username</small>
           </div>
         </div>
 
-        <section class="settings-section">
-          <div class="setting-row">
+        <section class="settings-section settings-actions">
+          <button class="settings-action" id="editProfileToggle" type="button">
+            <ion-icon name="person-outline"></ion-icon>
             <span>
-              <strong>الوضع الليلي</strong>
-              <small>تبديل مظهر التطبيق</small>
+              <strong data-i18n="editPersonalInfo">تعديل المعلومات الشخصية</strong>
+              <small data-i18n="editPersonalInfoDesc">الصورة، الاسم، البريد، والنبذة</small>
+            </span>
+          </button>
+          <div class="settings-action" id="themeActionButton" role="button" tabindex="0">
+            <ion-icon name="moon-outline"></ion-icon>
+            <span>
+              <strong data-i18n="nightDayMode">الوضع الليلي والنهاري</strong>
+              <small data-i18n="themeDesc">تبديل مظهر التطبيق</small>
             </span>
             <label class="switch">
               <input id="themeToggle" type="checkbox">
               <span></span>
             </label>
           </div>
+          <button class="settings-action" id="languageToggle" type="button">
+            <ion-icon name="language-outline"></ion-icon>
+            <span>
+              <strong data-i18n="language">اللغة</strong>
+              <small id="languageLabel">العربية</small>
+            </span>
+          </button>
+          <div class="language-panel hidden" id="languagePanel"></div>
         </section>
 
-        <section class="settings-section">
-          <h2>تعديل المعلومات</h2>
+        <section class="settings-section profile-edit-section hidden" id="profileEditSection">
+          <h2 data-i18n="editInfo">تعديل المعلومات</h2>
           <form id="profileForm" class="auth-form">
+            <div class="custom-file-row">
+              <input id="avatarInput" name="avatar" type="file" accept="image/*" hidden>
+              <button class="custom-file-button" id="avatarButton" type="button">
+                <ion-icon name="camera-outline"></ion-icon>
+                <span data-i18n="changeAvatar">تغيير صورة الحساب</span>
+              </button>
+              <small id="avatarFileName" data-i18n="noImageSelected">لم يتم اختيار صورة</small>
+            </div>
             <label>
-              صورة الحساب
-              <input id="avatarInput" name="avatar" type="file" accept="image/*">
-            </label>
-            <label>
-              الاسم الظاهر
+              <span data-i18n="displayName">الاسم الظاهر</span>
               <input name="name" required minlength="2">
             </label>
             <label>
-              اسم المستخدم
+              <span data-i18n="username">اسم المستخدم</span>
               <input name="username" required minlength="3">
             </label>
             <label>
-              البريد الإلكتروني
+              <span data-i18n="email">البريد الإلكتروني</span>
               <input name="email" type="email" required>
             </label>
             <label>
-              النبذة
-              <input name="about" maxlength="120" placeholder="متاح">
+              <span data-i18n="about">النبذة</span>
+              <input name="about" maxlength="120" placeholder="متاح" data-i18n-placeholder="available">
             </label>
             <label>
-              كلمة المرور الحالية
+              <span data-i18n="currentPassword">كلمة المرور الحالية</span>
               <input name="password" type="password" required autocomplete="current-password">
             </label>
             <label>
-              كلمة مرور جديدة اختيارية
+              <span data-i18n="newPasswordOptional">كلمة مرور جديدة اختيارية</span>
               <input name="newPassword" type="password" minlength="6" autocomplete="new-password">
             </label>
-            <button class="primary" type="submit">حفظ التعديلات</button>
-            <p class="notice" id="settingsNotice">يجب إدخال كلمة المرور الحالية قبل تعديل المعلومات.</p>
+            <button class="primary" type="submit" data-i18n="saveChanges">حفظ التعديلات</button>
+            <p class="notice" id="settingsNotice" data-i18n="settingsNotice">يجب إدخال كلمة المرور الحالية قبل تعديل المعلومات.</p>
           </form>
         </section>
       </section>
@@ -213,32 +233,32 @@
     <div class="toast hidden" id="toast" role="status"></div>
     <div class="message-overlay hidden" id="messageOverlay"></div>
     <div class="context-menu hidden" id="messageContextMenu">
-      <button type="button" id="forwardMessageButton">إرسال لشخص آخر</button>
-      <button type="button" id="editMessageButton">تعديل الرسالة</button>
-      <button type="button" id="deleteMessageButton">حذف الرسالة</button>
+      <button type="button" id="forwardMessageButton" data-i18n="forward">إرسال لشخص آخر</button>
+      <button type="button" id="editMessageButton" data-i18n="editMessage">تعديل الرسالة</button>
+      <button type="button" id="deleteMessageButton" data-i18n="deleteMessage">حذف الرسالة</button>
     </div>
-    <section class="share-modal hidden" id="shareModal" aria-label="مشاركة الرسالة">
+    <section class="share-modal hidden" id="shareModal" aria-label="مشاركة الرسالة" data-i18n-aria="forward">
       <header>
-        <h2>إرسال إلى</h2>
-        <button type="button" id="closeShareModal" aria-label="إغلاق">×</button>
+        <h2 data-i18n="sendTo">إرسال إلى</h2>
+        <button type="button" id="closeShareModal" aria-label="إغلاق" data-i18n-aria="close">×</button>
       </header>
       <div class="share-users" id="shareUsers"></div>
-      <button class="primary hidden" type="button" id="shareSelectedButton">مشاركة مع الحسابات المحددة</button>
+      <button class="primary hidden" type="button" id="shareSelectedButton" data-i18n="shareSelected">مشاركة مع الحسابات المحددة</button>
     </section>
-    <section class="edit-modal hidden" id="editModal" aria-label="تعديل الرسالة">
+    <section class="edit-modal hidden" id="editModal" aria-label="تعديل الرسالة" data-i18n-aria="editMessage">
       <header>
-        <h2>تعديل الرسالة</h2>
-        <button type="button" id="closeEditModal" aria-label="إغلاق">×</button>
+        <h2 data-i18n="editMessage">تعديل الرسالة</h2>
+        <button type="button" id="closeEditModal" aria-label="إغلاق" data-i18n-aria="close">×</button>
       </header>
       <textarea id="editMessageInput" rows="4" maxlength="2000"></textarea>
-      <button class="primary" type="button" id="saveEditButton">حفظ التعديل</button>
+      <button class="primary" type="button" id="saveEditButton" data-i18n="saveEdit">حفظ التعديل</button>
     </section>
-    <section class="viewer-modal hidden" id="viewerModal" aria-label="عرض الملف">
+    <section class="viewer-modal hidden" id="viewerModal" aria-label="عرض الملف" data-i18n-aria="viewFile">
       <header>
-        <h2 id="viewerTitle">عرض الملف</h2>
+        <h2 id="viewerTitle" data-i18n="viewFile">عرض الملف</h2>
         <div>
-          <a id="viewerOpenLink" href="#" download title="تنزيل الملف" aria-label="تنزيل الملف"><ion-icon name="arrow-down-outline"></ion-icon></a>
-          <button type="button" id="closeViewerModal" aria-label="إغلاق">×</button>
+          <a id="viewerOpenLink" href="#" download title="تنزيل الملف" aria-label="تنزيل الملف" data-i18n-title="downloadFile" data-i18n-aria="downloadFile"><ion-icon name="arrow-down-outline"></ion-icon></a>
+          <button type="button" id="closeViewerModal" aria-label="إغلاق" data-i18n-aria="close">×</button>
         </div>
       </header>
       <div class="viewer-body" id="viewerBody"></div>
