@@ -90,6 +90,7 @@ button {
   justify-items: center;
   gap: 14px;
   color: var(--muted);
+  margin: auto;
 }
 
 .auth-page {
