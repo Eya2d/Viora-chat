@@ -433,25 +433,26 @@ async function openAttachmentViewer(media) {
     return;
   }
 
-  if (media.mime === "application/pdf") {
-    const frame = document.createElement("iframe");
-    frame.className = "viewer-frame";
-    frame.src = media.url;
-    frame.title = media.name || "PDF";
-    els.viewerBody.appendChild(frame);
-    return;
-  }
-
   if (media.mime === "text/plain") {
+    const wrap = document.createElement("div");
+    wrap.className = "private-text-viewer";
+    const heading = document.createElement("div");
+    heading.className = "private-viewer-heading";
+    heading.innerHTML = `
+      <strong>${escapeHtml(media.name || "ملف نصي")}</strong>
+      <small>عارض Viora الخاص · ${formatSize(media.size)}</small>
+    `;
     const pre = document.createElement("pre");
     pre.className = "viewer-text";
     pre.textContent = "جاري تحميل النص...";
-    els.viewerBody.appendChild(pre);
+    wrap.appendChild(heading);
+    wrap.appendChild(pre);
+    els.viewerBody.appendChild(wrap);
     try {
       const response = await fetch(media.url);
       pre.textContent = await response.text();
     } catch {
-      pre.textContent = "تعذر عرض الملف النصي. استخدم زر فتح.";
+      pre.textContent = "تعذر عرض الملف النصي. استخدم زر التنزيل بالأعلى.";
     }
     return;
   }
@@ -459,9 +460,10 @@ async function openAttachmentViewer(media) {
   const card = document.createElement("div");
   card.className = "document-view-card";
   card.innerHTML = `
+    <b>${escapeHtml(documentIcon(media.mime))}</b>
     <strong>${escapeHtml(media.name || "ملف")}</strong>
     <small>${escapeHtml(media.mime || "ملف")} · ${formatSize(media.size)}</small>
-    <span>لا يمكن عرض هذا النوع مباشرة داخل المتصفح. استخدم زر التنزيل بالأعلى.</span>
+    <span>عارض Viora الخاص يعرض تفاصيل هذا الملف بدون iframe أو فتح داخل المتصفح. استخدم زر التنزيل بالأعلى للحصول على الملف.</span>
   `;
   els.viewerBody.appendChild(card);
 }
