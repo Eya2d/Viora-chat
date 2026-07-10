@@ -1801,7 +1801,9 @@ html[dir="ltr"] .context-menu {
 .share-modal,
 .edit-modal,
 .confirm-modal,
-.viewer-modal {
+.viewer-modal,
+.calls-modal,
+.call-window {
   position: fixed;
   right: 50%;
   top: 50%;
@@ -1823,7 +1825,9 @@ html[dir="ltr"] .context-menu {
 .share-modal.is-closing,
 .edit-modal.is-closing,
 .confirm-modal.is-closing,
-.viewer-modal.is-closing {
+.viewer-modal.is-closing,
+.calls-modal.is-closing,
+.call-window.is-closing {
   pointer-events: none;
   animation: modalOut 220ms ease both;
 }
@@ -1835,7 +1839,9 @@ html[dir="ltr"] .context-menu {
 .share-modal header,
 .edit-modal header,
 .confirm-modal header,
-.viewer-modal header {
+.viewer-modal header,
+.calls-modal header,
+.call-window header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1845,7 +1851,9 @@ html[dir="ltr"] .context-menu {
 .share-modal h2,
 .edit-modal h2,
 .confirm-modal h2,
-.viewer-modal h2 {
+.viewer-modal h2,
+.calls-modal h2,
+.call-window h2 {
   margin: 0;
   font-size: 18px;
   max-width: 200px;
@@ -1861,7 +1869,9 @@ html[dir="ltr"] .context-menu {
 .share-modal header button,
 .edit-modal header button,
 .confirm-modal header button,
-.viewer-modal header button {
+.viewer-modal header button,
+.calls-modal header button,
+.call-window header button {
   display: grid;
   place-items: center;
   width: 36px;
@@ -1907,6 +1917,84 @@ html[dir="ltr"] .context-menu {
 .danger-button {
   color: #fff;
   background: var(--danger);
+}
+
+.calls-modal {
+  width: min(92vw, 460px);
+}
+
+.calls-modal-body,
+.call-history,
+.call-users {
+  display: grid;
+  gap: 10px;
+  min-height: 0;
+}
+
+.calls-modal-body {
+  overflow: auto;
+}
+
+.call-section-title {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.call-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+}
+
+.call-row strong,
+.call-window h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.call-row small,
+.call-window p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.call-row button {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--green);
+  font-size: 20px;
+}
+
+.call-window {
+  width: min(92vw, 390px);
+  grid-template-rows: auto auto;
+}
+
+.call-window header {
+  justify-content: start;
+}
+
+.call-window header > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.call-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
 }
 
 .viewer-modal {
