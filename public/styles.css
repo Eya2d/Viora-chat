@@ -1986,6 +1986,12 @@ html[dir="ltr"] .context-menu {
   justify-content: start;
 }
 
+.calls-modal header div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .call-window header > div {
   min-width: 0;
   flex: 1;
@@ -1995,6 +2001,23 @@ html[dir="ltr"] .context-menu {
   display: flex;
   justify-content: center;
   gap: 10px;
+}
+
+.speaker-button {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 50%;
+  color: var(--text);
+  background: var(--soft);
+  font-size: 22px;
+}
+
+.speaker-button.active {
+  color: #fff;
+  background: var(--green);
 }
 
 .viewer-modal {
