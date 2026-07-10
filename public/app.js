@@ -1321,6 +1321,7 @@ function directConversationId(userA, userB) {
 
 function renderMedia(media) {
   const wrapper = document.createElement("div");
+  wrapper.className = "media-wrapper";
   let mediaNode;
   if (media.type === "image") {
     mediaNode = document.createElement("img");
@@ -1348,7 +1349,23 @@ function renderMedia(media) {
     });
   }
   if (mediaNode.tagName !== "BUTTON" && !mediaNode.dataset.customMedia) mediaNode.src = media.url;
-  wrapper.appendChild(mediaNode);
+  if (media.type === "image" || media.type === "video") {
+    wrapper.classList.add("media-loading");
+    const shell = document.createElement("span");
+    shell.className = "media-load-shell";
+    const loader = document.createElement("span");
+    loader.className = "media-circular-loader";
+    shell.append(mediaNode, loader);
+    wrapper.appendChild(shell);
+    const loadedTarget = media.type === "video" ? mediaNode.querySelector("video") : mediaNode;
+    const markLoaded = () => wrapper.classList.add("media-loaded");
+    loadedTarget?.addEventListener("load", markLoaded, { once: true });
+    loadedTarget?.addEventListener("loadedmetadata", markLoaded, { once: true });
+    loadedTarget?.addEventListener("loadeddata", markLoaded, { once: true });
+    if (loadedTarget?.complete || loadedTarget?.readyState >= 1) requestAnimationFrame(markLoaded);
+  } else {
+    wrapper.appendChild(mediaNode);
+  }
   const name = document.createElement("span");
   name.className = "media-name";
   name.textContent = `${media.name || t("file")} · ${formatSize(media.size)}`;
@@ -2081,6 +2098,7 @@ async function submitMedia(caption) {
         body: formData
       });
       addMessage(message);
+      if (index < files.length - 1) await waitForNextMessageLoad();
     }
     if (files.length) playTone("send");
   } finally {
