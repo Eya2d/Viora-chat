@@ -1254,11 +1254,19 @@ function canUseBrowserFrameViewer() {
   return window.matchMedia("(hover: hover) and (pointer: fine)").matches && maxTouchPoints === 0;
 }
 
-async function openAttachmentViewer(media) {
+async function openAttachmentViewer(media, options = {}) {
   if (state.selectionMode) return;
-  els.viewerTitle.textContent = media.name || t("viewFile");
-  els.viewerOpenLink.href = media.url;
-  els.viewerOpenLink.download = media.name || "attachment";
+  const viewerGroup = Array.isArray(options.group) ? options.group : null;
+  let viewerIndex = Number.isInteger(options.index) ? options.index : viewerGroup?.findIndex((item) => item.url === media.url) ?? -1;
+  if (viewerGroup && (viewerIndex < 0 || viewerIndex >= viewerGroup.length)) viewerIndex = 0;
+  const activeMedia = viewerGroup ? viewerGroup[viewerIndex] : media;
+  const setViewerDownloadTarget = (item) => {
+    els.viewerTitle.textContent = item.name || t("viewFile");
+    els.viewerOpenLink.href = item.url;
+    els.viewerOpenLink.download = item.name || "attachment";
+    els.viewerOpenLink.dataset.currentUrl = item.url;
+  };
+  setViewerDownloadTarget(activeMedia);
   els.viewerBody.textContent = "";
   pauseAllMedia();
   closeAllMenus();
@@ -1268,37 +1276,63 @@ async function openAttachmentViewer(media) {
   setViewerOverlay(true);
   showFloatingElement(els.viewerModal);
 
-  if (media.type === "image") {
-    const image = document.createElement("img");
-    image.className = "viewer-image";
-    image.src = media.url;
-    image.alt = media.name || t("image");
-    els.viewerBody.appendChild(image);
+  if (activeMedia.type === "image") {
+    const renderViewerImage = (index) => {
+      const current = viewerGroup ? viewerGroup[index] : activeMedia;
+      setViewerDownloadTarget(current);
+      els.viewerBody.textContent = "";
+      const image = document.createElement("img");
+      image.className = "viewer-image";
+      image.src = current.url;
+      image.alt = current.name || t("image");
+      els.viewerBody.appendChild(image);
+      if (!viewerGroup || viewerGroup.length < 2) return;
+      const previous = document.createElement("button");
+      previous.type = "button";
+      previous.className = "viewer-nav viewer-nav-prev";
+      previous.setAttribute("aria-label", t("back"));
+      previous.innerHTML = '<ion-icon name="chevron-back-outline"></ion-icon>';
+      const next = document.createElement("button");
+      next.type = "button";
+      next.className = "viewer-nav viewer-nav-next";
+      next.setAttribute("aria-label", t("forward"));
+      next.innerHTML = '<ion-icon name="chevron-forward-outline"></ion-icon>';
+      previous.addEventListener("click", () => {
+        viewerIndex = (viewerIndex - 1 + viewerGroup.length) % viewerGroup.length;
+        renderViewerImage(viewerIndex);
+      });
+      next.addEventListener("click", () => {
+        viewerIndex = (viewerIndex + 1) % viewerGroup.length;
+        renderViewerImage(viewerIndex);
+      });
+      els.viewerBody.append(previous, next);
+    };
+    renderViewerImage(viewerIndex);
     return;
   }
 
-  if (media.type === "video") {
-    els.viewerBody.appendChild(createCustomVideoPlayer(media));
+  if (activeMedia.type === "video") {
+    els.viewerBody.appendChild(createCustomVideoPlayer(activeMedia));
     return;
   }
 
-  if (canUseBrowserFrameViewer() && (media.mime === "application/pdf" || media.mime === "text/plain")) {
+  if (canUseBrowserFrameViewer() && (activeMedia.mime === "application/pdf" || activeMedia.mime === "text/plain")) {
     const frame = document.createElement("iframe");
     frame.className = "viewer-frame";
-    frame.src = media.url;
-    frame.title = media.name || t("file");
+    frame.src = activeMedia.url;
+    frame.title = activeMedia.name || t("file");
     els.viewerBody.appendChild(frame);
     return;
   }
 
-  if (media.mime === "text/plain") {
+  if (activeMedia.mime === "text/plain") {
     const wrap = document.createElement("div");
     wrap.className = "private-text-viewer";
     const heading = document.createElement("div");
     heading.className = "private-viewer-heading";
     heading.innerHTML = `
-      <strong>${escapeHtml(media.name || "TXT")}</strong>
-      <small>${escapeHtml(t("privateViewer"))} · ${formatSize(media.size)}</small>
+      <strong>${escapeHtml(activeMedia.name || "TXT")}</strong>
+      <small>${escapeHtml(t("privateViewer"))} · ${formatSize(activeMedia.size)}</small>
     `;
     const pre = document.createElement("pre");
     pre.className = "viewer-text";
@@ -1307,7 +1341,7 @@ async function openAttachmentViewer(media) {
     wrap.appendChild(pre);
     els.viewerBody.appendChild(wrap);
     try {
-      const response = await fetch(media.url);
+      const response = await fetch(activeMedia.url);
       pre.textContent = await response.text();
     } catch {
       pre.textContent = t("textLoadFail");
@@ -1318,9 +1352,9 @@ async function openAttachmentViewer(media) {
   const card = document.createElement("div");
   card.className = "document-view-card";
   card.innerHTML = `
-    <b>${escapeHtml(documentIcon(media.mime))}</b>
-    <strong>${escapeHtml(media.name || t("file"))}</strong>
-    <small>${escapeHtml(media.mime || t("file"))} · ${formatSize(media.size)}</small>
+    <b>${escapeHtml(documentIcon(activeMedia.mime))}</b>
+    <strong>${escapeHtml(activeMedia.name || t("file"))}</strong>
+    <small>${escapeHtml(activeMedia.mime || t("file"))} · ${formatSize(activeMedia.size)}</small>
     <span>${canUseBrowserFrameViewer() ? t("browserFrameFail") : t("privateViewerFail")}</span>
   `;
   els.viewerBody.appendChild(card);
@@ -1412,7 +1446,7 @@ function renderMediaGroup(group) {
     item.className = "image-group-item";
     item.addEventListener("click", () => {
       if (state.selectionMode) return;
-      openAttachmentViewer(media);
+      openAttachmentViewer(media, { group, index });
     });
     const image = document.createElement("img");
     image.alt = media.name || t("image");
