@@ -397,6 +397,10 @@ function callPayload(call, currentUserId = "") {
   };
 }
 
+function callVisibleFor(call, userId) {
+  return (call.fromId === userId || call.toId === userId) && !call.hiddenFor?.includes(userId);
+}
+
 function findCallForUser(callId, userId) {
   return db.calls.find((call) => call.id === callId && (call.fromId === userId || call.toId === userId));
 }
@@ -405,11 +409,23 @@ async function getCalls(req, res) {
   const auth = requireAuth(req, res);
   if (!auth) return;
   const calls = db.calls
-    .filter((call) => call.fromId === auth.user.id || call.toId === auth.user.id)
+    .filter((call) => callVisibleFor(call, auth.user.id))
     .sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt))
     .slice(0, 80)
     .map((call) => callPayload(call, auth.user.id));
   json(res, 200, { calls });
+}
+
+async function clearCalls(req, res) {
+  const auth = requireAuth(req, res);
+  if (!auth) return;
+  db.calls.forEach((call) => {
+    if (call.fromId !== auth.user.id && call.toId !== auth.user.id) return;
+    call.hiddenFor = Array.from(new Set([...(call.hiddenFor || []), auth.user.id]));
+  });
+  db.calls = db.calls.filter((call) => !(call.hiddenFor?.includes(call.fromId) && call.hiddenFor?.includes(call.toId)));
+  saveDb();
+  json(res, 200, { ok: true });
 }
 
 async function startCall(req, res) {
@@ -921,6 +937,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/messages") return createMessage(req, res);
     if (req.method === "POST" && url.pathname === "/api/typing") return updateTyping(req, res);
     if (req.method === "POST" && url.pathname === "/api/calls") return startCall(req, res);
+    if (req.method === "DELETE" && url.pathname === "/api/calls") return clearCalls(req, res);
     if (req.method === "POST" && url.pathname === "/api/read") return markRead(req, res);
     if (req.method === "POST" && url.pathname === "/api/conversation/clear") return clearConversation(req, res);
     const deleteMatch = /^\/api\/messages\/([^/]+)\/delete$/.exec(url.pathname);
