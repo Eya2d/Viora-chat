@@ -108,15 +108,21 @@
         <header class="conversation-header">
           <button class="icon-button ccvv back-button" id="backToAccounts" type="button" title="رجوع" aria-label="رجوع" data-i18n-title="back" data-i18n-aria="back"><ion-icon name="chevron-back-outline"></ion-icon></button>
           <span class="avatar group" id="chatAvatar">ع</span>
-          <div>
+          <div class="chat-heading">
             <h2 id="chatTitle" data-i18n="generalChat">المحادثة العامة</h2>
             <p id="statusLine" data-i18n="allUsers">كل المستخدمين</p>
+          </div>
+          <div class="selection-composer coc hidden" id="selectionComposer">
+            <strong id="selectedCountLabel">0</strong>
+            <button class="icon-button ccvv danger-tool" id="bulkDeleteButton" type="button" title="حذف المحدد" aria-label="حذف المحدد" data-i18n-title="deleteSelected" data-i18n-aria="deleteSelected"><ion-icon name="trash-outline"></ion-icon></button>
+            <button class="icon-button ccvv" id="bulkForwardButton" type="button" title="إرسال المحدد" aria-label="إرسال المحدد" data-i18n-title="forwardSelected" data-i18n-aria="forwardSelected"><ion-icon name="arrow-redo-outline"></ion-icon></button>
           </div>
           <button class="icon-button ccvv" id="messageSearchButton" type="button" title="بحث" aria-label="بحث" data-i18n-title="search" data-i18n-aria="search"><ion-icon name="search-outline"></ion-icon></button>
           <button class="icon-button ccvv" id="chatMenuButton" type="button" title="مزيد" aria-label="مزيد" data-i18n-title="more" data-i18n-aria="more"><ion-icon name="ellipsis-vertical"></ion-icon></button>
           <div class="menu chat-menu hidden" id="chatMenu">
             <button type="button" id="openMessageSearch" data-i18n="searchMessages">بحث في الرسائل</button>
             <button type="button" id="scrollBottomButton" data-i18n="lastMessage">آخر رسالة</button>
+            <button type="button" id="clearChatButton" data-i18n="clearChat">مسح محتوى الدردشة</button>
           </div>
         </header>
 
@@ -231,8 +237,11 @@
     </main>
 
     <div class="toast hidden" id="toast" role="status"></div>
+    <div class="menu-overlay hidden" id="menuOverlay"></div>
     <div class="message-overlay hidden" id="messageOverlay"></div>
     <div class="context-menu hidden" id="messageContextMenu">
+      <button type="button" id="selectMessageButton" data-i18n="selectMessage">تحديد</button>
+      <button type="button" id="closeConversationButton" class="hidden" data-i18n="closeConversation">إغلاق المحادثة</button>
       <button type="button" id="forwardMessageButton" data-i18n="forward">إرسال لشخص آخر</button>
       <button type="button" id="editMessageButton" data-i18n="editMessage">تعديل الرسالة</button>
       <button type="button" id="deleteMessageButton" data-i18n="deleteMessage">حذف الرسالة</button>
@@ -252,6 +261,19 @@
       </header>
       <textarea id="editMessageInput" rows="4" maxlength="2000"></textarea>
       <button class="primary" type="button" id="saveEditButton" data-i18n="saveEdit">حفظ التعديل</button>
+    </section>
+    <section class="confirm-modal hidden" id="confirmModal" aria-label="تأكيد الحذف" data-i18n-aria="confirmDelete">
+      <header>
+        <h2 id="confirmTitle">تأكيد الحذف</h2>
+        <button type="button" id="closeConfirmModal" aria-label="إغلاق" data-i18n-aria="close">×</button>
+      </header>
+      <p id="confirmText">هل تريد المتابعة؟</p>
+      <div class="confirm-actions">
+        <button class="ghost" type="button" id="cancelConfirmButton" data-i18n="cancel">تراجع</button>
+        <button class="ghost hidden" type="button" id="deleteForMeButton" data-i18n="deleteForMe">الحذف لدي</button>
+        <button class="danger-button hidden" type="button" id="deleteForEveryoneButton" data-i18n="deleteForEveryone">الحذف لدى الجميع</button>
+        <button class="danger-button" type="button" id="confirmActionButton" data-i18n="deleteConfirm">حذف</button>
+      </div>
     </section>
     <section class="viewer-modal hidden" id="viewerModal" aria-label="عرض الملف" data-i18n-aria="viewFile">
       <header>
