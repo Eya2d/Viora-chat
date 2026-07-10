@@ -8,6 +8,8 @@ const state = {
   search: "",
   messageSearch: "",
   selectedMessage: null,
+  selectionMode: false,
+  selectedMessageIds: new Set(),
   selectedShareUsers: new Set(),
   unread: new Map(),
   typing: new Map(),
@@ -25,6 +27,7 @@ const state = {
   recordingCancelled: false,
   recordingStopResolve: null,
   fallbackRecorder: null,
+  confirmAction: null,
   language: localStorage.getItem("vioraLanguage") || "ar",
   deviceId: getDeviceId()
 };
@@ -57,6 +60,7 @@ const els = {
   messageSearchButton: document.querySelector("#messageSearchButton"),
   openMessageSearch: document.querySelector("#openMessageSearch"),
   scrollBottomButton: document.querySelector("#scrollBottomButton"),
+  clearChatButton: document.querySelector("#clearChatButton"),
   messageSearchBar: document.querySelector("#messageSearchBar"),
   messageSearchInput: document.querySelector("#messageSearchInput"),
   closeMessageSearch: document.querySelector("#closeMessageSearch"),
@@ -76,6 +80,10 @@ const els = {
   avatarFileName: document.querySelector("#avatarFileName"),
   messages: document.querySelector("#messages"),
   composer: document.querySelector("#composer"),
+  selectionComposer: document.querySelector("#selectionComposer"),
+  selectedCountLabel: document.querySelector("#selectedCountLabel"),
+  bulkDeleteButton: document.querySelector("#bulkDeleteButton"),
+  bulkForwardButton: document.querySelector("#bulkForwardButton"),
   messageInput: document.querySelector("#messageInput"),
   mediaInput: document.querySelector("#mediaInput"),
   attachButton: document.querySelector("#attachButton"),
@@ -87,8 +95,11 @@ const els = {
   clearAttachmentButton: document.querySelector("#clearAttachmentButton"),
   mediaPreview: document.querySelector("#mediaPreview"),
   toast: document.querySelector("#toast"),
+  menuOverlay: document.querySelector("#menuOverlay"),
   messageOverlay: document.querySelector("#messageOverlay"),
   messageContextMenu: document.querySelector("#messageContextMenu"),
+  selectMessageButton: document.querySelector("#selectMessageButton"),
+  closeConversationButton: document.querySelector("#closeConversationButton"),
   forwardMessageButton: document.querySelector("#forwardMessageButton"),
   editMessageButton: document.querySelector("#editMessageButton"),
   deleteMessageButton: document.querySelector("#deleteMessageButton"),
@@ -100,6 +111,14 @@ const els = {
   closeEditModal: document.querySelector("#closeEditModal"),
   editMessageInput: document.querySelector("#editMessageInput"),
   saveEditButton: document.querySelector("#saveEditButton"),
+  confirmModal: document.querySelector("#confirmModal"),
+  closeConfirmModal: document.querySelector("#closeConfirmModal"),
+  confirmTitle: document.querySelector("#confirmTitle"),
+  confirmText: document.querySelector("#confirmText"),
+  cancelConfirmButton: document.querySelector("#cancelConfirmButton"),
+  deleteForMeButton: document.querySelector("#deleteForMeButton"),
+  deleteForEveryoneButton: document.querySelector("#deleteForEveryoneButton"),
+  confirmActionButton: document.querySelector("#confirmActionButton"),
   viewerModal: document.querySelector("#viewerModal"),
   viewerTitle: document.querySelector("#viewerTitle"),
   viewerOpenLink: document.querySelector("#viewerOpenLink"),
@@ -178,6 +197,36 @@ TR.ar.recordedAudio = "تسجيل صوتي";
 TR.en.recordedAudio = "Voice recording";
 TR.ar.microphoneError = "تعذر تشغيل الميكروفون.";
 TR.en.microphoneError = "Could not start the microphone.";
+TR.ar.clearChat = "مسح محتوى الدردشة";
+TR.en.clearChat = "Clear chat";
+TR.ar.confirmDelete = "تأكيد الحذف";
+TR.en.confirmDelete = "Confirm delete";
+TR.ar.deleteConfirm = "حذف";
+TR.en.deleteConfirm = "Delete";
+TR.ar.selectMessage = "تحديد";
+TR.en.selectMessage = "Select";
+TR.ar.closeConversation = "إغلاق المحادثة";
+TR.en.closeConversation = "Close chat";
+TR.ar.closeSelection = "إغلاق التحديد";
+TR.en.closeSelection = "Close selection";
+TR.ar.deleteSelected = "حذف المحدد";
+TR.en.deleteSelected = "Delete selected";
+TR.ar.forwardSelected = "إرسال المحدد";
+TR.en.forwardSelected = "Forward selected";
+TR.ar.confirmDeleteSelectedText = "اختر طريقة حذف الرسائل المحددة.";
+TR.en.confirmDeleteSelectedText = "Choose how to delete the selected messages.";
+TR.ar.deleteForMe = "الحذف لدي";
+TR.en.deleteForMe = "Delete for me";
+TR.ar.deleteForEveryone = "الحذف لدى الجميع";
+TR.en.deleteForEveryone = "Delete for everyone";
+TR.ar.cancel = "تراجع";
+TR.en.cancel = "Cancel";
+TR.ar.confirmDeleteMessageText = "اختر طريقة حذف الرسالة.";
+TR.en.confirmDeleteMessageText = "Choose how to delete this message.";
+TR.ar.confirmClearChatText = "هل تريد مسح محتوى هذه الدردشة كاملة؟ لا يمكن التراجع بعد المسح.";
+TR.en.confirmClearChatText = "Clear all content in this chat? This cannot be undone.";
+TR.ar.chatCleared = "تم مسح محتوى الدردشة.";
+TR.en.chatCleared = "Chat content cleared.";
 const translationKeys = Object.keys(TR.ar);
 Object.entries(EXTRA_TRANSLATIONS).forEach(([lang, values]) => {
   TR[lang] = Object.fromEntries(translationKeys.map((key, index) => [key, values[index] || TR.en[key] || TR.ar[key]]));
@@ -190,6 +239,38 @@ Object.assign(TR.hi, { unexpectedError: "अनपेक्षित त्र�
 Object.assign(TR.ur, { unexpectedError: "غیر متوقع خرابی ہوئی۔", private: "نجی", edited: "ترمیم شدہ", privateViewer: "Viora نجی ویور", seekAudio: "آڈیو آگے پیچھے کریں", seekVideo: "ویڈیو آگے پیچھے کریں" });
 Object.assign(TR.zh, { unexpectedError: "发生意外错误。", private: "私密", edited: "已编辑", privateViewer: "Viora 私有查看器", seekAudio: "拖动音频", seekVideo: "拖动视频" });
 Object.assign(TR.id, { unexpectedError: "Terjadi kesalahan tidak terduga.", private: "Pribadi", edited: "Diedit", privateViewer: "Viewer privat Viora", seekAudio: "Geser audio", seekVideo: "Geser video" });
+Object.assign(TR.fr, { deleteForMe: "Supprimer pour moi", deleteForEveryone: "Supprimer pour tout le monde", confirmDeleteMessageText: "Choisissez comment supprimer ce message." });
+Object.assign(TR.es, { deleteForMe: "Eliminar para mí", deleteForEveryone: "Eliminar para todos", confirmDeleteMessageText: "Elige cómo eliminar este mensaje." });
+Object.assign(TR.de, { deleteForMe: "Für mich löschen", deleteForEveryone: "Für alle löschen", confirmDeleteMessageText: "Wählen Sie, wie diese Nachricht gelöscht wird." });
+Object.assign(TR.tr, { deleteForMe: "Benim için sil", deleteForEveryone: "Herkes için sil", confirmDeleteMessageText: "Bu mesajın nasıl silineceğini seçin." });
+Object.assign(TR.hi, { deleteForMe: "मेरे लिए हटाएं", deleteForEveryone: "सभी के लिए हटाएं", confirmDeleteMessageText: "यह संदेश कैसे हटाना है चुनें।" });
+Object.assign(TR.ur, { deleteForMe: "میرے لیے حذف کریں", deleteForEveryone: "سب کے لیے حذف کریں", confirmDeleteMessageText: "پیغام حذف کرنے کا طریقہ منتخب کریں۔" });
+Object.assign(TR.zh, { deleteForMe: "为我删除", deleteForEveryone: "为所有人删除", confirmDeleteMessageText: "选择删除这条消息的方式。" });
+Object.assign(TR.id, { deleteForMe: "Hapus untuk saya", deleteForEveryone: "Hapus untuk semua", confirmDeleteMessageText: "Pilih cara menghapus pesan ini." });
+Object.assign(TR.fr, { selectMessage: "Sélectionner", deleteSelected: "Supprimer la sélection", forwardSelected: "Transférer la sélection", confirmDeleteSelectedText: "Choisissez comment supprimer les messages sélectionnés." });
+Object.assign(TR.es, { selectMessage: "Seleccionar", deleteSelected: "Eliminar selección", forwardSelected: "Reenviar selección", confirmDeleteSelectedText: "Elige cómo eliminar los mensajes seleccionados." });
+Object.assign(TR.de, { selectMessage: "Auswählen", deleteSelected: "Auswahl löschen", forwardSelected: "Auswahl weiterleiten", confirmDeleteSelectedText: "Wählen Sie, wie die ausgewählten Nachrichten gelöscht werden." });
+Object.assign(TR.tr, { selectMessage: "Seç", deleteSelected: "Seçileni sil", forwardSelected: "Seçileni ilet", confirmDeleteSelectedText: "Seçilen mesajların nasıl silineceğini seçin." });
+Object.assign(TR.hi, { selectMessage: "चुनें", deleteSelected: "चुने हुए हटाएं", forwardSelected: "चुने हुए भेजें", confirmDeleteSelectedText: "चुने गए संदेश कैसे हटाने हैं चुनें।" });
+Object.assign(TR.ur, { selectMessage: "منتخب کریں", deleteSelected: "منتخب حذف کریں", forwardSelected: "منتخب آگے بھیجیں", confirmDeleteSelectedText: "منتخب پیغامات حذف کرنے کا طریقہ منتخب کریں۔" });
+Object.assign(TR.zh, { selectMessage: "选择", deleteSelected: "删除所选", forwardSelected: "转发所选", confirmDeleteSelectedText: "选择删除所选消息的方式。" });
+Object.assign(TR.id, { selectMessage: "Pilih", deleteSelected: "Hapus pilihan", forwardSelected: "Teruskan pilihan", confirmDeleteSelectedText: "Pilih cara menghapus pesan yang dipilih." });
+Object.assign(TR.fr, { closeConversation: "Fermer la discussion" });
+Object.assign(TR.es, { closeConversation: "Cerrar chat" });
+Object.assign(TR.de, { closeConversation: "Chat schließen" });
+Object.assign(TR.tr, { closeConversation: "Sohbeti kapat" });
+Object.assign(TR.hi, { closeConversation: "चैट बंद करें" });
+Object.assign(TR.ur, { closeConversation: "چیٹ بند کریں" });
+Object.assign(TR.zh, { closeConversation: "关闭聊天" });
+Object.assign(TR.id, { closeConversation: "Tutup chat" });
+Object.assign(TR.fr, { closeSelection: "Fermer la sélection" });
+Object.assign(TR.es, { closeSelection: "Cerrar selección" });
+Object.assign(TR.de, { closeSelection: "Auswahl schließen" });
+Object.assign(TR.tr, { closeSelection: "Seçimi kapat" });
+Object.assign(TR.hi, { closeSelection: "चयन बंद करें" });
+Object.assign(TR.ur, { closeSelection: "انتخاب بند کریں" });
+Object.assign(TR.zh, { closeSelection: "关闭选择" });
+Object.assign(TR.id, { closeSelection: "Tutup pilihan" });
 
 function t(key) {
   return TR[state.language]?.[key] || TR.en[key] || TR.ar[key] || key;
@@ -385,19 +466,25 @@ function showOverlay(clear = false) {
   showFloatingElement(els.messageOverlay);
 }
 
+function setViewerOverlay(active) {
+  els.messageOverlay.classList.toggle("viewer-overlay", active);
+}
+
 function hideOverlay() {
-  if (isShown(els.messageContextMenu) || isShown(els.shareModal) || isShown(els.editModal) || isShown(els.viewerModal)) return;
+  if (isShown(els.messageContextMenu) || isShown(els.shareModal) || isShown(els.editModal) || isShown(els.confirmModal) || isShown(els.viewerModal)) return;
+  setViewerOverlay(false);
   hideFloatingElement(els.messageOverlay);
 }
 
 function closeAllMenus(except) {
-  [els.overflowMenu, els.chatMenu, els.composerMenu].forEach((menu) => {
+  [els.overflowMenu, els.chatMenu, els.composerMenu, els.languagePanel].forEach((menu) => {
     if (menu !== except) hideFloatingElement(menu);
   });
+  if (!except) hideFloatingElement(els.menuOverlay);
 }
 
 function closeAllModals(except) {
-  [els.shareModal, els.editModal, els.viewerModal].forEach((modal) => {
+  [els.shareModal, els.editModal, els.confirmModal, els.viewerModal].forEach((modal) => {
     if (modal !== except) hideFloatingElement(modal);
   });
 }
@@ -405,10 +492,12 @@ function closeAllModals(except) {
 function toggleMenu(menu) {
   if (isShown(menu)) {
     hideFloatingElement(menu);
+    hideFloatingElement(els.menuOverlay);
     return;
   }
   closeAllMenus(menu);
   closeMessageContextMenu();
+  showFloatingElement(els.menuOverlay);
   showFloatingElement(menu);
 }
 
@@ -536,6 +625,8 @@ async function openChat(type, user = null) {
   state.activeChat = { type, user };
   state.unread.delete(conversationIdFor(type, user));
   state.messageSearch = "";
+  state.selectionMode = false;
+  state.selectedMessageIds.clear();
   els.messageSearchInput.value = "";
   els.messageSearchBar.classList.add("hidden");
   updateChatHeader();
@@ -588,8 +679,14 @@ function handleTyping(payload) {
 
 function addMessage(message) {
   if (!messageBelongsToActiveChat(message) || state.messages.has(message.id)) return;
+  const previousMessages = Array.from(state.messages.values()).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const previousMessage = previousMessages[previousMessages.length - 1] || null;
   state.messages.set(message.id, message);
-  rerenderMessages();
+  if (previousMessage && new Date(previousMessage.createdAt) > new Date(message.createdAt)) {
+    rerenderMessages();
+    return;
+  }
+  appendRenderedMessage(message, previousMessage);
 }
 
 function upsertMessage(message) {
@@ -625,24 +722,113 @@ function messageTickHtml(message) {
   return ` <span class="ticks ${status}" title="${escapeHtml(t(status))}">${icon}</span>`;
 }
 
+function updateSelectionUi() {
+  const count = state.selectedMessageIds.size;
+  state.selectionMode = count > 0 || state.selectionMode;
+  if (state.selectionMode) pauseAllMedia();
+  els.messages.classList.toggle("selection-mode", state.selectionMode);
+  els.chatPage.classList.toggle("selection-mode", state.selectionMode);
+  els.selectionComposer?.classList.toggle("hidden", count === 0);
+  if (els.selectedCountLabel) els.selectedCountLabel.textContent = String(count);
+  els.bulkDeleteButton?.setAttribute("title", `${t("deleteSelected")} (${count})`);
+  els.bulkForwardButton?.setAttribute("title", `${t("forwardSelected")} (${count})`);
+}
+
+function setMessageSelected(messageId, selected) {
+  if (selected) state.selectedMessageIds.add(messageId);
+  else state.selectedMessageIds.delete(messageId);
+  if (state.selectedMessageIds.size === 0) state.selectionMode = false;
+  const node = els.messages.querySelector(`[data-message-id="${CSS.escape(messageId)}"]`);
+  if (node) {
+    node.classList.toggle("is-selected", selected);
+    const checkbox = node.querySelector(".message-select input");
+    if (checkbox) checkbox.checked = selected;
+  }
+  updateSelectionUi();
+}
+
+function startMessageSelection(message) {
+  if (!message) return;
+  state.selectionMode = true;
+  pauseAllMedia();
+  setMessageSelected(message.id, true);
+  closeMessageContextMenu();
+}
+
+function selectedMessages() {
+  return Array.from(state.selectedMessageIds)
+    .map((id) => state.messages.get(id))
+    .filter(Boolean)
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+}
+
+function canDeleteSelectionForEveryone() {
+  const messages = selectedMessages();
+  return messages.length > 0 && messages.every((message) => message.userId === state.user?.id);
+}
+
+function clearMessageSelection({ rerender = true } = {}) {
+  const selectedIds = Array.from(state.selectedMessageIds);
+  state.selectionMode = false;
+  state.selectedMessageIds.clear();
+  if (rerender) {
+    rerenderMessages();
+    return;
+  }
+  selectedIds.forEach((messageId) => {
+    const node = els.messages.querySelector(`[data-message-id="${CSS.escape(messageId)}"]`);
+    if (!node) return;
+    node.classList.remove("is-selected");
+    const checkbox = node.querySelector(".message-select input");
+    if (checkbox) checkbox.checked = false;
+  });
+  updateSelectionUi();
+}
+
+function handleBackFromChat() {
+  if (state.selectionMode || state.selectedMessageIds.size > 0) {
+    clearMessageSelection({ rerender: false });
+    return;
+  }
+  showPage("accounts");
+}
+
+function closeConversationView() {
+  state.selectionMode = false;
+  state.selectedMessageIds.clear();
+  state.selectedMessage = null;
+  updateSelectionUi();
+  closeMessageContextMenu();
+  showPage("accounts");
+}
+
 function renderMessage(message, previousMessage = null) {
-  const node = document.createElement("article");
+  const row = document.createElement("div");
   const mine = message.mine || message.userId === state.user?.id;
   const hasTail = shouldShowMessageTail(message, previousMessage);
+  const selected = state.selectedMessageIds.has(message.id);
   const date = new Date(message.createdAt);
   const dateKey = Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : "";
-  node.className = `message${mine ? " mine" : ""}${hasTail ? " with-tail" : " xoox"}`;
-  node.dataset.messageId = message.id;
-  node.dataset.dateKey = dateKey;
-  node.innerHTML = `
-    <div class="meta">
-      <span>${escapeHtml(message.author || t("user"))}</span>
-      <span>@${escapeHtml(message.username || "")}</span>
-    </div>
-    <div class="body"></div>
-    <time>${formatTime(message.createdAt)}${message.editedAt ? ` · ${escapeHtml(t("edited"))}` : ""}${messageTickHtml(message)}</time>
+  row.className = `message-row${mine ? " mine" : ""}${selected ? " is-selected" : ""}`;
+  row.dataset.messageId = message.id;
+  row.dataset.dateKey = dateKey;
+  row.innerHTML = `
+    <article class="message${mine ? " mine" : ""}${hasTail ? " with-tail" : " xoox"}">
+      <div class="message-content">
+      <div class="meta">
+        <span>${escapeHtml(message.author || t("user"))}</span>
+        <span>@${escapeHtml(message.username || "")}</span>
+      </div>
+      <div class="body"></div>
+      <time>${formatTime(message.createdAt)}${message.editedAt ? ` · ${escapeHtml(t("edited"))}` : ""}${messageTickHtml(message)}</time>
+      </div>
+    </article>
+    <label class="message-select" aria-label="${escapeHtml(t("selectMessage"))}">
+      <input type="checkbox" ${selected ? "checked" : ""}>
+      <span></span>
+    </label>
   `;
-  const body = node.querySelector(".body");
+  const body = row.querySelector(".body");
   if (message.forwardedFrom) {
     const forwarded = document.createElement("span");
     forwarded.className = "forwarded-label";
@@ -655,8 +841,55 @@ function renderMessage(message, previousMessage = null) {
     text.textContent = message.text;
     body.appendChild(text);
   }
-  node.addEventListener("contextmenu", (event) => openMessageContextMenu(event, message));
-  els.messages.appendChild(node);
+  const bubble = row.querySelector(".message");
+  const selectLabel = row.querySelector(".message-select");
+  const checkbox = row.querySelector(".message-select input");
+  checkbox.addEventListener("change", () => setMessageSelected(message.id, checkbox.checked));
+  checkbox.addEventListener("click", (event) => event.stopPropagation());
+  selectLabel.addEventListener("click", (event) => event.stopPropagation());
+  row.addEventListener("click", (event) => {
+    if (!state.selectionMode) return;
+    if (event.target.closest(".message-select")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setMessageSelected(message.id, !state.selectedMessageIds.has(message.id));
+  }, true);
+  bubble.addEventListener("contextmenu", (event) => {
+    if (state.selectionMode) {
+      event.preventDefault();
+      return;
+    }
+    event.stopPropagation();
+    openMessageContextMenu(event, message);
+  });
+  row.addEventListener("contextmenu", (event) => {
+    if (state.selectionMode) {
+      event.preventDefault();
+      return;
+    }
+    if (event.target.closest(".message")) return;
+    openMessageRowContextMenu(event, message);
+  });
+  els.messages.appendChild(row);
+}
+
+function appendRenderedMessage(message, previousMessage = null) {
+  const nearBottom = els.messages.scrollHeight - els.messages.scrollTop - els.messages.clientHeight < 120;
+  const date = new Date(message.createdAt);
+  const dateKey = Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : "";
+  const separators = Array.from(els.messages.querySelectorAll(".date-separator"));
+  const lastDateKey = separators[separators.length - 1]?.dataset.dateKey || "";
+  if (dateKey && dateKey !== lastDateKey) {
+    const separator = document.createElement("div");
+    separator.className = "date-separator";
+    separator.dataset.dateKey = dateKey;
+    separator.textContent = formatDateSeparator(message.createdAt);
+    els.messages.appendChild(separator);
+  }
+  renderMessage(message, previousMessage);
+  updateMessageSearchVisibility();
+  updateSelectionUi();
+  if (nearBottom) scrollMessagesToBottom(1600);
 }
 
 function rerenderMessages(options = {}) {
@@ -681,6 +914,7 @@ function rerenderMessages(options = {}) {
       previousRenderedMessage = message;
     });
   updateMessageSearchVisibility();
+  updateSelectionUi();
   if (options.forceBottom || nearBottom) scrollMessagesToBottom(options.forceBottom ? 3000 : 1600);
 }
 
@@ -733,7 +967,25 @@ function matchesMessageSearch(message) {
 
 function removeMessage(messageId) {
   state.messages.delete(messageId);
+  state.selectedMessageIds.delete(messageId);
+  if (state.selectedMessageIds.size === 0) state.selectionMode = false;
   rerenderMessages();
+}
+
+function clearActiveMessages() {
+  state.messages.clear();
+  state.selectionMode = false;
+  state.selectedMessageIds.clear();
+  rerenderMessages({ forceBottom: true });
+}
+
+async function clearCurrentChat() {
+  await api("/api/conversation/clear", {
+    method: "POST",
+    body: JSON.stringify({ recipientId: currentRecipientId() })
+  });
+  clearActiveMessages();
+  showToast(t("chatCleared"));
 }
 
 function canEditClient(message) {
@@ -742,22 +994,44 @@ function canEditClient(message) {
   return Number.isFinite(createdAt) && Date.now() - createdAt <= 5 * 60 * 1000;
 }
 
-function openMessageContextMenu(event, message) {
-  event.preventDefault();
-  state.selectedMessage = message;
-  closeAllMenus();
-  showOverlay();
-  showFloatingElement(els.messageContextMenu);
-  els.editMessageButton.classList.toggle("hidden", !canEditClient(message));
-  els.deleteMessageButton.classList.toggle("hidden", message.userId !== state.user?.id);
+function positionMessageContextMenu(event, menuHeight = 184) {
   const menuWidth = 210;
-  const menuHeight = 142;
   const isLtr = document.documentElement.dir === "ltr";
   const preferredX = isLtr ? event.clientX : event.clientX - menuWidth;
   const x = Math.min(Math.max(8, preferredX), window.innerWidth - menuWidth - 8);
   const y = Math.min(event.clientY, window.innerHeight - menuHeight - 8);
   els.messageContextMenu.style.left = `${x}px`;
   els.messageContextMenu.style.top = `${Math.max(8, y)}px`;
+}
+
+function openMessageContextMenu(event, message) {
+  event.preventDefault();
+  if (state.selectionMode) return;
+  state.selectedMessage = message;
+  closeAllMenus();
+  showOverlay();
+  showFloatingElement(els.messageContextMenu);
+  els.selectMessageButton.classList.remove("hidden");
+  els.closeConversationButton?.classList.add("hidden");
+  els.forwardMessageButton.classList.remove("hidden");
+  els.editMessageButton.classList.toggle("hidden", !canEditClient(message));
+  els.deleteMessageButton.classList.remove("hidden");
+  positionMessageContextMenu(event, 184);
+}
+
+function openMessageRowContextMenu(event, message) {
+  event.preventDefault();
+  if (state.selectionMode || message.userId !== state.user?.id) return;
+  state.selectedMessage = message;
+  closeAllMenus();
+  showOverlay();
+  showFloatingElement(els.messageContextMenu);
+  els.selectMessageButton.classList.remove("hidden");
+  els.closeConversationButton?.classList.remove("hidden");
+  els.forwardMessageButton.classList.add("hidden");
+  els.editMessageButton.classList.add("hidden");
+  els.deleteMessageButton.classList.add("hidden");
+  positionMessageContextMenu(event, 96);
 }
 
 function closeMessageContextMenu() {
@@ -783,7 +1057,7 @@ function clearAttachment() {
 }
 
 function openShareModal() {
-  if (!state.selectedMessage) return;
+  if (!state.selectedMessage && state.selectedMessageIds.size === 0) return;
   state.selectedShareUsers.clear();
   renderShareUsers();
   hideFloatingElement(els.messageContextMenu);
@@ -847,9 +1121,38 @@ function closeEditModal() {
   hideOverlay();
 }
 
+function setConfirmButtons(mode = "single", message = null) {
+  const messageDeleteMode = mode === "message-delete";
+  const bulkDeleteMode = mode === "bulk-delete";
+  const deleteChoiceMode = messageDeleteMode || bulkDeleteMode;
+  els.confirmActionButton?.classList.toggle("hidden", deleteChoiceMode);
+  els.deleteForMeButton?.classList.toggle("hidden", !deleteChoiceMode);
+  els.deleteForEveryoneButton?.classList.toggle("hidden", !deleteChoiceMode || (bulkDeleteMode ? !canDeleteSelectionForEveryone() : message?.userId !== state.user?.id));
+}
+
+function openConfirmModal({ title = t("confirmDelete"), text, action, mode = "single", message = null }) {
+  state.confirmAction = action;
+  closeAllMenus();
+  hideFloatingElement(els.messageContextMenu);
+  closeAllModals(els.confirmModal);
+  els.confirmTitle.textContent = title;
+  els.confirmText.textContent = text;
+  setConfirmButtons(mode, message);
+  showOverlay();
+  showFloatingElement(els.confirmModal);
+}
+
+function closeConfirmModal() {
+  hideFloatingElement(els.confirmModal);
+  state.confirmAction = null;
+  setConfirmButtons();
+  hideOverlay();
+}
+
 function closeViewerModal() {
   pauseAllMedia();
   hideFloatingElement(els.viewerModal);
+  setViewerOverlay(false);
   els.viewerBody.textContent = "";
   els.viewerOpenLink.removeAttribute("href");
   els.viewerOpenLink.removeAttribute("download");
@@ -862,6 +1165,7 @@ function canUseBrowserFrameViewer() {
 }
 
 async function openAttachmentViewer(media) {
+  if (state.selectionMode) return;
   els.viewerTitle.textContent = media.name || t("viewFile");
   els.viewerOpenLink.href = media.url;
   els.viewerOpenLink.download = media.name || "attachment";
@@ -871,6 +1175,7 @@ async function openAttachmentViewer(media) {
   hideFloatingElement(els.messageContextMenu);
   closeAllModals(els.viewerModal);
   showOverlay();
+  setViewerOverlay(true);
   showFloatingElement(els.viewerModal);
 
   if (media.type === "image") {
@@ -947,7 +1252,10 @@ function renderMedia(media) {
   if (media.type === "image") {
     mediaNode = document.createElement("img");
     mediaNode.alt = media.name || t("image");
-    mediaNode.addEventListener("click", () => openAttachmentViewer(media));
+    mediaNode.addEventListener("click", () => {
+      if (state.selectionMode) return;
+      openAttachmentViewer(media);
+    });
   } else if (media.type === "video") {
     mediaNode = createVideoThumb(media);
   } else if (media.type === "audio") {
@@ -961,7 +1269,10 @@ function renderMedia(media) {
       <strong>${escapeHtml(media.name || t("file"))}</strong>
       <small>${escapeHtml(media.mime || t("file"))} · ${formatSize(media.size)}</small>
     `;
-    mediaNode.addEventListener("click", () => openAttachmentViewer(media));
+    mediaNode.addEventListener("click", () => {
+      if (state.selectionMode) return;
+      openAttachmentViewer(media);
+    });
   }
   if (mediaNode.tagName !== "BUTTON" && !mediaNode.dataset.customMedia) mediaNode.src = media.url;
   wrapper.appendChild(mediaNode);
@@ -979,6 +1290,10 @@ function pauseAllMedia(except) {
 }
 
 document.addEventListener("play", (event) => {
+  if (state.selectionMode && event.target instanceof HTMLMediaElement) {
+    event.target.pause();
+    return;
+  }
   if (event.target instanceof HTMLMediaElement) pauseAllMedia(event.target);
 }, true);
 
@@ -991,10 +1306,15 @@ function formatMediaTime(seconds) {
 
 function bindMediaScrubber(timeline, mediaElement) {
   const updateFromValue = () => {
+    if (state.selectionMode) return;
     if (!mediaElement.duration) return;
     mediaElement.currentTime = (Number(timeline.value) / 1000) * mediaElement.duration;
   };
   const updateFromPointer = (event) => {
+    if (state.selectionMode) {
+      event.preventDefault();
+      return;
+    }
     if (!mediaElement.duration) return;
     const rect = timeline.getBoundingClientRect();
     const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
@@ -1050,6 +1370,7 @@ function createCustomAudioPlayer(media) {
   info.append(title, timeline, time);
 
   play.addEventListener("click", async () => {
+    if (state.selectionMode) return;
     if (audio.paused) {
       pauseAllMedia(audio);
       await audio.play();
@@ -1100,7 +1421,10 @@ function createVideoThumb(media) {
   play.innerHTML = '<ion-icon name="play"></ion-icon>';
 
   button.append(video, play);
-  button.addEventListener("click", () => openAttachmentViewer(media));
+  button.addEventListener("click", () => {
+    if (state.selectionMode) return;
+    openAttachmentViewer(media);
+  });
   return button;
 }
 
@@ -1138,6 +1462,7 @@ function createCustomVideoPlayer(media) {
   controls.append(play, timeline, time, fullscreen);
 
   play.addEventListener("click", async () => {
+    if (state.selectionMode) return;
     if (video.paused) {
       pauseAllMedia(video);
       await video.play();
@@ -1145,7 +1470,10 @@ function createCustomVideoPlayer(media) {
       video.pause();
     }
   });
-  video.addEventListener("click", () => play.click());
+  video.addEventListener("click", () => {
+    if (state.selectionMode) return;
+    play.click();
+  });
   video.addEventListener("play", () => {
     play.innerHTML = '<ion-icon name="pause"></ion-icon>';
   });
@@ -1161,6 +1489,7 @@ function createCustomVideoPlayer(media) {
   });
   bindMediaScrubber(timeline, video);
   fullscreen.addEventListener("click", async () => {
+    if (state.selectionMode) return;
     try {
       const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
       if (fullscreenElement) {
@@ -1227,12 +1556,7 @@ function finishRecording(blob) {
   const file = new File([blob], `voice-${Date.now()}.${extension}`, { type });
   state.mediaFile = file;
   els.mediaInput.value = "";
-  els.mediaPreview.classList.remove("hidden");
-  els.mediaPreview.innerHTML = `
-    <span>${escapeHtml(t("recordedAudio"))} · ${formatSize(file.size)}</span>
-    <button type="button" aria-label="${escapeHtml(t("removeFile"))}">${escapeHtml(t("removeFile"))}</button>
-  `;
-  els.mediaPreview.querySelector("button").addEventListener("click", clearAttachment);
+  renderAttachmentPreview(file);
 }
 
 function encodeWav(chunks, sampleRate) {
@@ -1426,6 +1750,46 @@ function formatSize(bytes = 0) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function filePreviewKind(file) {
+  const type = file?.type || "";
+  const name = file?.name || "";
+  if (type.startsWith("image/")) return "image";
+  if (type.startsWith("video/")) return "video";
+  if (type.startsWith("audio/")) return "audio";
+  return documentIcon(type || name);
+}
+
+function renderAttachmentPreview(file) {
+  if (!file) return;
+  const kind = filePreviewKind(file);
+  const url = URL.createObjectURL(file);
+  let mediaHtml = "";
+  if (kind === "image") {
+    mediaHtml = `<img src="${url}" alt="${escapeHtml(file.name)}">`;
+  } else if (kind === "video") {
+    mediaHtml = `<video src="${url}" muted preload="metadata"></video><span class="preview-play"><ion-icon name="play"></ion-icon></span>`;
+  } else if (kind === "audio") {
+    mediaHtml = '<span class="preview-file-icon"><ion-icon name="mic"></ion-icon></span>';
+  } else {
+    mediaHtml = `<span class="preview-file-icon">${escapeHtml(kind)}</span>`;
+  }
+  els.mediaPreview.classList.remove("hidden");
+  els.mediaPreview.innerHTML = `
+    <div class="attachment-preview-card">
+      <span class="preview-thumb">${mediaHtml}</span>
+      <span class="preview-info">
+        <strong>${escapeHtml(file.name || t("file"))}</strong>
+        <small>${escapeHtml(file.type || kind)} · ${formatSize(file.size)}</small>
+      </span>
+      <button type="button" aria-label="${escapeHtml(t("removeFile"))}">${escapeHtml(t("removeFile"))}</button>
+    </div>
+  `;
+  const cleanup = () => URL.revokeObjectURL(url);
+  els.mediaPreview.querySelector("img")?.addEventListener("load", cleanup, { once: true });
+  els.mediaPreview.querySelector("video")?.addEventListener("loadeddata", cleanup, { once: true });
+  els.mediaPreview.querySelector("button").addEventListener("click", clearAttachment);
+}
+
 function initials(name) {
   const parts = String(name || "U").trim().split(/\s+/).filter(Boolean);
   return parts.slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "U";
@@ -1497,6 +1861,8 @@ async function loadMessages() {
   const { messages } = await api(path);
   els.messages.textContent = "";
   state.messages.clear();
+  state.selectionMode = false;
+  state.selectedMessageIds.clear();
   messages.forEach((message) => state.messages.set(message.id, message));
   rerenderMessages({ forceBottom: true });
   markActiveChatRead();
@@ -1553,6 +1919,12 @@ function startEvents() {
   state.events.addEventListener("messageDelete", (event) => {
     const payload = JSON.parse(event.data);
     removeMessage(payload.id);
+  });
+  state.events.addEventListener("conversationClear", (event) => {
+    const payload = JSON.parse(event.data);
+    if (payload.conversationId === conversationIdFor()) clearActiveMessages();
+    state.unread.delete(payload.conversationId);
+    renderUsers();
   });
   state.events.addEventListener("user", (event) => {
     addOrUpdateUser(JSON.parse(event.data));
@@ -1689,6 +2061,8 @@ function closeMenusFromOutside(event) {
 
 document.addEventListener("pointerdown", closeMenusFromOutside);
 document.addEventListener("click", closeMenusFromOutside);
+els.menuOverlay?.addEventListener("pointerdown", closeFloatingMenus);
+els.menuOverlay?.addEventListener("click", closeFloatingMenus);
 
 els.refreshButton.addEventListener("click", async () => {
   await loadUsers();
@@ -1701,7 +2075,7 @@ els.searchInput.addEventListener("input", () => {
 });
 
 els.generalChatButton.addEventListener("click", () => openChat("general"));
-els.backToAccounts.addEventListener("click", () => showPage("accounts"));
+els.backToAccounts.addEventListener("click", handleBackFromChat);
 els.backFromSettings.addEventListener("click", () => showPage("accounts"));
 els.themeToggle.addEventListener("change", () => applyTheme(els.themeToggle.checked ? "dark" : "light"));
 els.themeToggle.closest(".switch")?.addEventListener("click", (event) => event.stopPropagation());
@@ -1724,8 +2098,13 @@ els.editProfileToggle?.addEventListener("click", () => {
   }
 });
 els.languageToggle?.addEventListener("click", () => {
-  if (els.languagePanel.classList.contains("hidden")) showFloatingElement(els.languagePanel);
-  else hideFloatingElement(els.languagePanel);
+  if (els.languagePanel.classList.contains("hidden")) {
+    closeAllMenus(els.languagePanel);
+    showFloatingElement(els.menuOverlay);
+    showFloatingElement(els.languagePanel);
+  } else {
+    closeAllMenus();
+  }
 });
 els.avatarButton?.addEventListener("click", () => els.avatarInput.click());
 
@@ -1795,6 +2174,7 @@ function closeOverlayPanels() {
   closeMessageContextMenu();
   closeShareModal();
   closeEditModal();
+  closeConfirmModal();
   closeViewerModal();
 }
 
@@ -1802,33 +2182,111 @@ els.messageOverlay.addEventListener("pointerdown", closeOverlayPanels);
 els.messageOverlay.addEventListener("click", closeOverlayPanels);
 
 els.forwardMessageButton.addEventListener("click", openShareModal);
+els.closeConversationButton?.addEventListener("click", closeConversationView);
 
-els.deleteMessageButton.addEventListener("click", async () => {
+async function deleteSelectedMessage(mode = "me") {
   if (!state.selectedMessage) return;
   const messageId = state.selectedMessage.id;
   try {
-    await api(`/api/messages/${encodeURIComponent(messageId)}/delete`, { method: "POST", body: JSON.stringify({}) });
+    await api(`/api/messages/${encodeURIComponent(messageId)}/delete`, { method: "POST", body: JSON.stringify({ mode }) });
     removeMessage(messageId);
     closeMessageContextMenu();
+    closeConfirmModal();
     showToast(t("messageDeleted"));
   } catch (error) {
     showToast(error.message);
   }
+}
+
+async function deleteSelectedMessages(mode = "me") {
+  const messages = selectedMessages();
+  if (!messages.length) return;
+  try {
+    for (const message of messages) {
+      await api(`/api/messages/${encodeURIComponent(message.id)}/delete`, { method: "POST", body: JSON.stringify({ mode }) });
+      state.messages.delete(message.id);
+      state.selectedMessageIds.delete(message.id);
+    }
+    state.selectionMode = false;
+    closeConfirmModal();
+    rerenderMessages();
+    showToast(t("messageDeleted"));
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function deleteCurrentDeleteTarget(mode = "me") {
+  if (state.selectedMessageIds.size > 0) return deleteSelectedMessages(mode);
+  return deleteSelectedMessage(mode);
+}
+
+els.deleteMessageButton.addEventListener("click", () => {
+  if (!state.selectedMessage) return;
+  openConfirmModal({
+    title: t("deleteMessage"),
+    text: t("confirmDeleteMessageText"),
+    mode: "message-delete",
+    message: state.selectedMessage
+  });
+});
+
+els.selectMessageButton?.addEventListener("click", () => startMessageSelection(state.selectedMessage));
+els.bulkDeleteButton?.addEventListener("click", () => {
+  if (state.selectedMessageIds.size === 0) return;
+  openConfirmModal({
+    title: t("deleteSelected"),
+    text: t("confirmDeleteSelectedText"),
+    mode: "bulk-delete"
+  });
+});
+
+els.bulkForwardButton?.addEventListener("click", () => {
+  if (state.selectedMessageIds.size === 0) return;
+  openShareModal();
+});
+
+els.clearChatButton?.addEventListener("click", () => {
+  hideFloatingElement(els.chatMenu);
+  openConfirmModal({
+    title: t("clearChat"),
+    text: t("confirmClearChatText"),
+    action: clearCurrentChat
+  });
 });
 
 els.editMessageButton.addEventListener("click", openEditModal);
 els.closeShareModal.addEventListener("click", closeShareModal);
 els.closeEditModal.addEventListener("click", closeEditModal);
+els.closeConfirmModal?.addEventListener("click", closeConfirmModal);
+els.cancelConfirmButton?.addEventListener("click", closeConfirmModal);
+els.deleteForMeButton?.addEventListener("click", () => deleteCurrentDeleteTarget("me"));
+els.deleteForEveryoneButton?.addEventListener("click", () => deleteCurrentDeleteTarget("everyone"));
+els.confirmActionButton?.addEventListener("click", async () => {
+  const action = state.confirmAction;
+  if (!action) return closeConfirmModal();
+  els.confirmActionButton.disabled = true;
+  try {
+    await action();
+  } finally {
+    els.confirmActionButton.disabled = false;
+  }
+});
 els.closeViewerModal.addEventListener("click", closeViewerModal);
 
 els.shareSelectedButton.addEventListener("click", async () => {
-  if (!state.selectedMessage || state.selectedShareUsers.size === 0) return;
+  const messages = state.selectedMessageIds.size > 0 ? selectedMessages() : [state.selectedMessage].filter(Boolean);
+  if (!messages.length || state.selectedShareUsers.size === 0) return;
   try {
-    await api(`/api/messages/${encodeURIComponent(state.selectedMessage.id)}/forward`, {
-      method: "POST",
-      body: JSON.stringify({ recipientIds: Array.from(state.selectedShareUsers) })
-    });
+    const recipientIds = Array.from(state.selectedShareUsers);
+    for (const message of messages) {
+      await api(`/api/messages/${encodeURIComponent(message.id)}/forward`, {
+        method: "POST",
+        body: JSON.stringify({ recipientIds })
+      });
+    }
     closeShareModal();
+    if (state.selectedMessageIds.size > 0) clearMessageSelection();
     showToast(t("sharedSelected"));
   } catch (error) {
     showToast(error.message);
@@ -1862,17 +2320,7 @@ els.mediaInput.addEventListener("change", () => {
   }
   sendTyping(true, "upload");
   setTimeout(() => sendTyping(false, "upload"), 1600);
-  els.mediaPreview.innerHTML = `
-    <span>${escapeHtml(state.mediaFile.name)} · ${formatSize(state.mediaFile.size)}</span>
-    <button type="button" aria-label="${escapeHtml(t("removeFile"))}">${escapeHtml(t("removeFile"))}</button>
-  `;
-  els.mediaPreview.querySelector("button").addEventListener("click", () => {
-    state.mediaFile = null;
-    els.mediaInput.value = "";
-    els.mediaPreview.classList.add("hidden");
-    els.mediaPreview.textContent = "";
-  });
-  els.mediaPreview.classList.remove("hidden");
+  renderAttachmentPreview(state.mediaFile);
 });
 
 els.messageInput.addEventListener("input", () => {
