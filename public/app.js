@@ -21,7 +21,6 @@ const state = {
   typingStopTimer: null,
   calls: [],
   activeCall: null,
-  speakerOn: true,
   pendingCallSignals: new Map(),
   audioContext: null,
   keepScrollBottomUntil: 0,
@@ -146,7 +145,6 @@ const els = {
   closeCallWindow: document.querySelector("#closeCallWindow"),
   acceptCallButton: document.querySelector("#acceptCallButton"),
   rejectCallButton: document.querySelector("#rejectCallButton"),
-  speakerButton: document.querySelector("#speakerButton"),
   endCallButton: document.querySelector("#endCallButton"),
   remoteCallAudio: document.querySelector("#remoteCallAudio")
 };
@@ -283,8 +281,7 @@ Object.assign(TR.ar, {
   callUnavailable: "المكالمات متاحة في المحادثات الخاصة فقط.",
   clearCallHistory: "حذف سجل المكالمات",
   callHistoryCleared: "تم حذف سجل المكالمات.",
-  callAudioBlocked: "اضغط على نافذة الاتصال لتشغيل الصوت.",
-  speaker: "السبيكر"
+  callAudioBlocked: "اضغط على نافذة الاتصال لتشغيل الصوت."
 });
 Object.assign(TR.en, {
   voiceCall: "Voice call",
@@ -305,8 +302,7 @@ Object.assign(TR.en, {
   callUnavailable: "Calls are available in private chats only.",
   clearCallHistory: "Clear call history",
   callHistoryCleared: "Call history cleared.",
-  callAudioBlocked: "Tap the call window to play audio.",
-  speaker: "Speaker"
+  callAudioBlocked: "Tap the call window to play audio."
 });
 const translationKeys = Object.keys(TR.ar);
 Object.entries(EXTRA_TRANSLATIONS).forEach(([lang, values]) => {
@@ -551,9 +547,7 @@ function showCallWindow(user, status, incoming = false) {
   if (els.callAvatar) setAvatar(els.callAvatar, user);
   els.acceptCallButton.classList.toggle("hidden", !incoming);
   els.rejectCallButton.classList.toggle("hidden", !incoming);
-  els.speakerButton?.classList.remove("hidden");
   els.endCallButton.classList.toggle("hidden", incoming);
-  updateSpeakerButton();
   closeAllMenus();
   closeAllModals(els.callWindow);
   showOverlay();
@@ -598,33 +592,9 @@ async function getCallStream() {
 function playRemoteCallAudio(stream) {
   if (!els.remoteCallAudio || !stream) return;
   els.remoteCallAudio.srcObject = stream;
-  applySpeakerOutput();
+  els.remoteCallAudio.muted = false;
+  els.remoteCallAudio.volume = 1;
   els.remoteCallAudio.play?.().catch(() => showToast(t("callAudioBlocked")));
-}
-
-function updateSpeakerButton() {
-  if (!els.speakerButton) return;
-  els.speakerButton.classList.toggle("active", state.speakerOn);
-  els.speakerButton.innerHTML = `<ion-icon name="${state.speakerOn ? "volume-high-outline" : "volume-mute-outline"}"></ion-icon>`;
-}
-
-async function applySpeakerOutput() {
-  if (!els.remoteCallAudio) return;
-  els.remoteCallAudio.muted = !state.speakerOn;
-  els.remoteCallAudio.volume = state.speakerOn ? 1 : 0;
-  if (state.speakerOn && typeof els.remoteCallAudio.setSinkId === "function") {
-    try {
-      await els.remoteCallAudio.setSinkId("default");
-    } catch {
-      // Some browsers do not allow selecting an output device.
-    }
-  }
-  updateSpeakerButton();
-}
-
-function toggleSpeaker() {
-  state.speakerOn = !state.speakerOn;
-  applySpeakerOutput();
 }
 
 function setupPeerConnection(callId, peerId, stream) {
@@ -2952,10 +2922,6 @@ els.voiceCallButton?.addEventListener("click", () => {
 });
 els.closeCallWindow?.addEventListener("click", closeCallWindowOnly);
 els.callWindow?.addEventListener("click", () => els.remoteCallAudio?.play?.().catch(() => {}));
-els.speakerButton?.addEventListener("click", (event) => {
-  event.stopPropagation();
-  toggleSpeaker();
-});
 els.acceptCallButton?.addEventListener("click", acceptIncomingCall);
 els.rejectCallButton?.addEventListener("click", () => endLocalCall(true, "reject"));
 els.endCallButton?.addEventListener("click", () => endLocalCall(true, "end"));
