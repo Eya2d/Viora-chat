@@ -3,7 +3,9 @@ const state = {
   users: new Map(),
   messages: new Map(),
   events: null,
-  mediaFile: null,
+  mediaFiles: [],
+  attachmentPreviewUrls: [],
+  messageLoadId: 0,
   activeChat: { type: "general", user: null },
   search: "",
   messageSearch: "",
@@ -28,6 +30,7 @@ const state = {
   recordingStopResolve: null,
   fallbackRecorder: null,
   confirmAction: null,
+  pendingClearChat: null,
   language: localStorage.getItem("vioraLanguage") || "ar",
   deviceId: getDeviceId()
 };
@@ -227,6 +230,12 @@ TR.ar.confirmClearChatText = "هل تريد مسح محتوى هذه الدرد�
 TR.en.confirmClearChatText = "Clear all content in this chat? This cannot be undone.";
 TR.ar.chatCleared = "تم مسح محتوى الدردشة.";
 TR.en.chatCleared = "Chat content cleared.";
+TR.ar.clearChatPending = "سيتم مسح محتوى الدردشة خلال 5 ثوانٍ.";
+TR.en.clearChatPending = "Chat content will be cleared in 5 seconds.";
+TR.ar.undoClearChat = "تراجع";
+TR.en.undoClearChat = "Undo";
+TR.ar.clearChatCanceled = "تم التراجع عن مسح الدردشة.";
+TR.en.clearChatCanceled = "Chat clearing canceled.";
 const translationKeys = Object.keys(TR.ar);
 Object.entries(EXTRA_TRANSLATIONS).forEach(([lang, values]) => {
   TR[lang] = Object.fromEntries(translationKeys.map((key, index) => [key, values[index] || TR.en[key] || TR.ar[key]]));
@@ -356,10 +365,11 @@ function clearRememberSession() {
 }
 
 async function api(path, options = {}) {
+  const headers = options.body instanceof FormData ? {} : { "Content-Type": "application/json" };
   const response = await fetch(path, {
-    headers: options.body instanceof FormData ? undefined : { "Content-Type": "application/json" },
     credentials: "same-origin",
-    ...options
+    ...options,
+    headers: { ...headers, ...(options.headers || {}) }
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.error || t("unexpectedError"));
@@ -809,7 +819,7 @@ function renderMessage(message, previousMessage = null) {
   const selected = state.selectedMessageIds.has(message.id);
   const date = new Date(message.createdAt);
   const dateKey = Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : "";
-  row.className = `message-row${mine ? " mine" : ""}${selected ? " is-selected" : ""}`;
+  row.className = `message-row${mine ? " mine" : " message-row-white other-message-row"}${selected ? " is-selected" : ""}`;
   row.dataset.messageId = message.id;
   row.dataset.dateKey = dateKey;
   row.innerHTML = `
@@ -915,6 +925,7 @@ function rerenderMessages(options = {}) {
     });
   updateMessageSearchVisibility();
   updateSelectionUi();
+  if (state.pendingClearChat?.conversationId === conversationIdFor()) renderPendingClearChatNotice(false);
   if (options.forceBottom || nearBottom) scrollMessagesToBottom(options.forceBottom ? 3000 : 1600);
 }
 
@@ -980,12 +991,73 @@ function clearActiveMessages() {
 }
 
 async function clearCurrentChat() {
+  scheduleClearCurrentChat();
+}
+
+function removePendingClearChatNotice() {
+  els.messages.querySelector(".clear-chat-pending")?.remove();
+}
+
+function cancelPendingClearChat(showMessage = true) {
+  if (state.pendingClearChat?.timer) clearTimeout(state.pendingClearChat.timer);
+  state.pendingClearChat = null;
+  removePendingClearChatNotice();
+  if (showMessage) showToast(t("clearChatCanceled"));
+}
+
+function renderPendingClearChatNotice(shouldScroll = true) {
+  const pending = state.pendingClearChat;
+  if (!pending) return;
+  removePendingClearChatNotice();
+  const elapsed = Date.now() - pending.startedAt;
+  const duration = pending.duration || 5000;
+  const progress = Math.min(100, Math.max(0, (elapsed / duration) * 100));
+  const remaining = Math.max(80, duration - elapsed);
+  const notice = document.createElement("div");
+  notice.className = "clear-chat-pending";
+  notice.setAttribute("role", "status");
+  notice.innerHTML = `
+    <div class="clear-chat-pending-row">
+      <span>${escapeHtml(t("clearChatPending"))}</span>
+      <button type="button">${escapeHtml(t("undoClearChat"))}</button>
+    </div>
+    <span class="clear-chat-progress"><span></span></span>
+  `;
+  const progressBar = notice.querySelector(".clear-chat-progress span");
+  progressBar.style.width = `${progress}%`;
+  progressBar.style.animationDuration = `${remaining}ms`;
+  notice.querySelector("button").addEventListener("click", () => cancelPendingClearChat(true));
+  els.messages.appendChild(notice);
+  if (shouldScroll) scrollMessagesToBottom(5200);
+}
+
+async function executePendingClearChat(pending) {
+  if (state.pendingClearChat !== pending) return;
+  state.pendingClearChat = null;
+  removePendingClearChatNotice();
   await api("/api/conversation/clear", {
     method: "POST",
-    body: JSON.stringify({ recipientId: currentRecipientId() })
+    body: JSON.stringify({ recipientId: pending.recipientId })
   });
-  clearActiveMessages();
+  if (pending.conversationId === conversationIdFor()) clearActiveMessages();
   showToast(t("chatCleared"));
+}
+
+function scheduleClearCurrentChat() {
+  cancelPendingClearChat(false);
+  const pending = {
+    conversationId: conversationIdFor(),
+    recipientId: currentRecipientId(),
+    startedAt: Date.now(),
+    duration: 5000,
+    timer: null
+  };
+  state.pendingClearChat = pending;
+  closeConfirmModal();
+  renderPendingClearChatNotice();
+  pending.timer = setTimeout(() => {
+    executePendingClearChat(pending).catch((error) => showToast(error.message));
+  }, 5000);
 }
 
 function canEditClient(message) {
@@ -1021,7 +1093,7 @@ function openMessageContextMenu(event, message) {
 
 function openMessageRowContextMenu(event, message) {
   event.preventDefault();
-  if (state.selectionMode || message.userId !== state.user?.id) return;
+  if (state.selectionMode) return;
   state.selectedMessage = message;
   closeAllMenus();
   showOverlay();
@@ -1050,8 +1122,9 @@ function clearAttachment() {
     stopRecording(true);
     return;
   }
-  state.mediaFile = null;
+  state.mediaFiles = [];
   els.mediaInput.value = "";
+  clearAttachmentPreviewUrls();
   els.mediaPreview.classList.add("hidden");
   els.mediaPreview.textContent = "";
 }
@@ -1554,9 +1627,9 @@ function finishRecording(blob) {
   const type = blob.type || "audio/webm";
   const extension = type.includes("ogg") ? "ogg" : type.includes("mp4") ? "m4a" : type.includes("mpeg") ? "mp3" : "webm";
   const file = new File([blob], `voice-${Date.now()}.${extension}`, { type });
-  state.mediaFile = file;
+  state.mediaFiles = [file];
   els.mediaInput.value = "";
-  renderAttachmentPreview(file);
+  renderAttachmentPreviews();
 }
 
 function encodeWav(chunks, sampleRate) {
@@ -1759,8 +1832,18 @@ function filePreviewKind(file) {
   return documentIcon(type || name);
 }
 
-function renderAttachmentPreview(file) {
-  if (!file) return;
+function removeAttachment(index) {
+  state.mediaFiles.splice(index, 1);
+  els.mediaInput.value = "";
+  renderAttachmentPreviews();
+}
+
+function clearAttachmentPreviewUrls() {
+  state.attachmentPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
+  state.attachmentPreviewUrls = [];
+}
+
+function attachmentPreviewHtml(file) {
   const kind = filePreviewKind(file);
   const url = URL.createObjectURL(file);
   let mediaHtml = "";
@@ -1773,21 +1856,31 @@ function renderAttachmentPreview(file) {
   } else {
     mediaHtml = `<span class="preview-file-icon">${escapeHtml(kind)}</span>`;
   }
+  return { url, html: `<span class="preview-thumb">${mediaHtml}</span>` };
+}
+
+function renderAttachmentPreviews() {
+  const files = state.mediaFiles || [];
+  clearAttachmentPreviewUrls();
+  if (!files.length) {
+    els.mediaPreview.classList.add("hidden");
+    els.mediaPreview.textContent = "";
+    return;
+  }
+  const previews = files.map(attachmentPreviewHtml);
+  state.attachmentPreviewUrls = previews.map((preview) => preview.url);
   els.mediaPreview.classList.remove("hidden");
-  els.mediaPreview.innerHTML = `
+  els.mediaPreview.innerHTML = previews.map((preview, index) => `
     <div class="attachment-preview-card">
-      <span class="preview-thumb">${mediaHtml}</span>
-      <span class="preview-info">
-        <strong>${escapeHtml(file.name || t("file"))}</strong>
-        <small>${escapeHtml(file.type || kind)} · ${formatSize(file.size)}</small>
-      </span>
-      <button type="button" aria-label="${escapeHtml(t("removeFile"))}">${escapeHtml(t("removeFile"))}</button>
+      ${preview.html}
+      <button class="attachment-remove" type="button" data-index="${index}" aria-label="${escapeHtml(t("removeFile"))}">
+        <ion-icon name="close"></ion-icon>
+      </button>
     </div>
-  `;
-  const cleanup = () => URL.revokeObjectURL(url);
-  els.mediaPreview.querySelector("img")?.addEventListener("load", cleanup, { once: true });
-  els.mediaPreview.querySelector("video")?.addEventListener("loadeddata", cleanup, { once: true });
-  els.mediaPreview.querySelector("button").addEventListener("click", clearAttachment);
+  `).join("");
+  els.mediaPreview.querySelectorAll(".attachment-remove").forEach((button) => {
+    button.addEventListener("click", () => removeAttachment(Number(button.dataset.index)));
+  });
 }
 
 function initials(name) {
@@ -1808,6 +1901,25 @@ function setAvatar(node, user) {
 
 function currentRecipientId() {
   return state.activeChat.type === "direct" ? state.activeChat.user.id : "";
+}
+
+function waitForNextMessageLoad() {
+  return new Promise((resolve) => setTimeout(resolve, 1));
+}
+
+async function renderMessagesOneByOne(messages, loadId) {
+  const orderedMessages = [...messages].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  let previousMessage = null;
+  for (const message of orderedMessages) {
+    if (loadId !== state.messageLoadId) return false;
+    state.messages.set(message.id, message);
+    appendRenderedMessage(message, previousMessage);
+    previousMessage = message;
+    await waitForNextMessageLoad();
+  }
+  if (loadId !== state.messageLoadId) return false;
+  scrollMessagesToBottom(3000);
+  return true;
 }
 
 async function loadMe() {
@@ -1856,15 +1968,18 @@ async function loadUsers() {
 }
 
 async function loadMessages() {
+  const loadId = ++state.messageLoadId;
   const recipientId = currentRecipientId();
   const path = recipientId ? `/api/messages?with=${encodeURIComponent(recipientId)}` : "/api/messages";
   const { messages } = await api(path);
+  if (loadId !== state.messageLoadId) return;
   els.messages.textContent = "";
   state.messages.clear();
   state.selectionMode = false;
   state.selectedMessageIds.clear();
-  messages.forEach((message) => state.messages.set(message.id, message));
-  rerenderMessages({ forceBottom: true });
+  const completed = await renderMessagesOneByOne(messages, loadId);
+  if (!completed) return;
+  if (state.pendingClearChat?.conversationId === conversationIdFor()) renderPendingClearChatNotice(false);
   markActiveChatRead();
 }
 
@@ -1953,17 +2068,21 @@ async function submitText(text) {
 
 async function submitMedia(caption) {
   sendTyping(true, "upload");
-  const formData = new FormData();
-  formData.append("media", state.mediaFile);
-  formData.append("caption", caption);
-  formData.append("recipientId", currentRecipientId());
+  const files = [...state.mediaFiles];
+  const recipientId = currentRecipientId();
   try {
-    const { message } = await api("/api/upload", {
-      method: "POST",
-      body: formData
-    });
-    addMessage(message);
-    playTone("send");
+    for (const [index, file] of files.entries()) {
+      const formData = new FormData();
+      formData.append("media", file);
+      formData.append("caption", index === 0 ? caption : "");
+      formData.append("recipientId", recipientId);
+      const { message } = await api("/api/upload", {
+        method: "POST",
+        body: formData
+      });
+      addMessage(message);
+    }
+    if (files.length) playTone("send");
   } finally {
     sendTyping(false, "upload");
   }
@@ -2312,15 +2431,16 @@ els.attachButton.addEventListener("click", () => els.mediaInput.click());
 els.recordButton?.addEventListener("click", toggleRecording);
 
 els.mediaInput.addEventListener("change", () => {
-  state.mediaFile = els.mediaInput.files[0] || null;
-  if (!state.mediaFile) {
+  state.mediaFiles = [...state.mediaFiles, ...Array.from(els.mediaInput.files || [])];
+  els.mediaInput.value = "";
+  if (!state.mediaFiles.length) {
     els.mediaPreview.classList.add("hidden");
     els.mediaPreview.textContent = "";
     return;
   }
   sendTyping(true, "upload");
   setTimeout(() => sendTyping(false, "upload"), 1600);
-  renderAttachmentPreview(state.mediaFile);
+  renderAttachmentPreviews();
 });
 
 els.messageInput.addEventListener("input", () => {
@@ -2335,10 +2455,10 @@ els.composer.addEventListener("submit", async (event) => {
   if (!state.user) return showToast(t("loginFirst"));
   if (state.recorder || state.fallbackRecorder) await stopRecording();
   const text = els.messageInput.value.trim();
-  if (!text && !state.mediaFile) return;
+  if (!text && !state.mediaFiles.length) return;
   els.composer.querySelector(".send-button").disabled = true;
   try {
-    if (state.mediaFile) await submitMedia(text);
+    if (state.mediaFiles.length) await submitMedia(text);
     else await submitText(text);
     els.messageInput.value = "";
     els.messageInput.style.height = "auto";
