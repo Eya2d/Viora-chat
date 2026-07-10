@@ -19,6 +19,9 @@ const state = {
   typingTimers: new Map(),
   typingSendTimer: null,
   typingStopTimer: null,
+  calls: [],
+  activeCall: null,
+  pendingCallSignals: new Map(),
   audioContext: null,
   keepScrollBottomUntil: 0,
   recorder: null,
@@ -61,6 +64,8 @@ const els = {
   chatTitle: document.querySelector("#chatTitle"),
   chatMenuButton: document.querySelector("#chatMenuButton"),
   chatMenu: document.querySelector("#chatMenu"),
+  callsTabButton: document.querySelector("#callsTabButton"),
+  voiceCallButton: document.querySelector("#voiceCallButton"),
   messageSearchButton: document.querySelector("#messageSearchButton"),
   openMessageSearch: document.querySelector("#openMessageSearch"),
   scrollBottomButton: document.querySelector("#scrollBottomButton"),
@@ -127,7 +132,20 @@ const els = {
   viewerTitle: document.querySelector("#viewerTitle"),
   viewerOpenLink: document.querySelector("#viewerOpenLink"),
   viewerBody: document.querySelector("#viewerBody"),
-  closeViewerModal: document.querySelector("#closeViewerModal")
+  closeViewerModal: document.querySelector("#closeViewerModal"),
+  callsModal: document.querySelector("#callsModal"),
+  closeCallsModal: document.querySelector("#closeCallsModal"),
+  callUsers: document.querySelector("#callUsers"),
+  callHistory: document.querySelector("#callHistory"),
+  callWindow: document.querySelector("#callWindow"),
+  callAvatar: document.querySelector("#callAvatar"),
+  callTitle: document.querySelector("#callTitle"),
+  callStatus: document.querySelector("#callStatus"),
+  closeCallWindow: document.querySelector("#closeCallWindow"),
+  acceptCallButton: document.querySelector("#acceptCallButton"),
+  rejectCallButton: document.querySelector("#rejectCallButton"),
+  endCallButton: document.querySelector("#endCallButton"),
+  remoteCallAudio: document.querySelector("#remoteCallAudio")
 };
 
 const transitionTimers = new WeakMap();
@@ -243,6 +261,42 @@ TR.ar.sendingInProgress = "انتظر حتى ينتهي إرسال المرفق�
 TR.en.sendingInProgress = "Wait until the current attachments finish sending.";
 TR.ar.serverNeedsRestart = "أعد تشغيل الخادم لتفعيل تحديثات إرسال الصور.";
 TR.en.serverNeedsRestart = "Restart the server to enable the new photo sending updates.";
+Object.assign(TR.ar, {
+  voiceCall: "مكالمة صوتية",
+  acceptCall: "قبول",
+  rejectCall: "رفض",
+  endCall: "إنهاء الاتصال",
+  calling: "جاري الاتصال...",
+  incomingCall: "مكالمة واردة",
+  callConnected: "المكالمة متصلة",
+  callEnded: "انتهت المكالمة",
+  callRejected: "تم رفض المكالمة",
+  callMissed: "مكالمة فائتة",
+  noCalls: "لا توجد مكالمات بعد.",
+  callToday: "اليوم",
+  callThisMonth: "هذا الشهر",
+  callOlder: "أقدم",
+  microphonePermission: "اسمح باستخدام الميكروفون لإجراء المكالمة.",
+  callUnavailable: "المكالمات متاحة في المحادثات الخاصة فقط."
+});
+Object.assign(TR.en, {
+  voiceCall: "Voice call",
+  acceptCall: "Accept",
+  rejectCall: "Reject",
+  endCall: "End call",
+  calling: "Calling...",
+  incomingCall: "Incoming call",
+  callConnected: "Call connected",
+  callEnded: "Call ended",
+  callRejected: "Call rejected",
+  callMissed: "Missed call",
+  noCalls: "No calls yet.",
+  callToday: "Today",
+  callThisMonth: "This month",
+  callOlder: "Older",
+  microphonePermission: "Allow microphone access to make the call.",
+  callUnavailable: "Calls are available in private chats only."
+});
 const translationKeys = Object.keys(TR.ar);
 Object.entries(EXTRA_TRANSLATIONS).forEach(([lang, values]) => {
   TR[lang] = Object.fromEntries(translationKeys.map((key, index) => [key, values[index] || TR.en[key] || TR.ar[key]]));
@@ -464,6 +518,266 @@ function playTone(type) {
   }
 }
 
+function callPeerUser(call) {
+  if (!call || !state.user) return null;
+  if (call.otherUser) return call.otherUser;
+  const otherId = call.fromId === state.user.id ? call.toId : call.fromId;
+  return state.users.get(otherId) || null;
+}
+
+function callStatusText(call) {
+  if (!call) return t("calling");
+  if (call.status === "active") return t("callConnected");
+  if (call.status === "rejected") return t("callRejected");
+  if (call.status === "missed") return t("callMissed");
+  if (call.status === "ended") return t("callEnded");
+  return call.toId === state.user?.id ? t("incomingCall") : t("calling");
+}
+
+function showCallWindow(user, status, incoming = false) {
+  els.callTitle.textContent = user?.name || t("voiceCall");
+  els.callStatus.textContent = status;
+  if (els.callAvatar) setAvatar(els.callAvatar, user);
+  els.acceptCallButton.classList.toggle("hidden", !incoming);
+  els.rejectCallButton.classList.toggle("hidden", !incoming);
+  els.endCallButton.classList.toggle("hidden", incoming);
+  closeAllMenus();
+  closeAllModals(els.callWindow);
+  showOverlay();
+  showFloatingElement(els.callWindow);
+}
+
+function closeCallWindowOnly() {
+  hideFloatingElement(els.callWindow);
+  hideOverlay();
+}
+
+async function sendCallAction(callId, action, extra = {}) {
+  return api(`/api/calls/${encodeURIComponent(callId)}`, {
+    method: "POST",
+    body: JSON.stringify({ action, ...extra })
+  });
+}
+
+async function sendCallSignal(callId, signal) {
+  try {
+    await sendCallAction(callId, "signal", { signal });
+  } catch {
+    // Signaling is best-effort while the peer connection is closing.
+  }
+}
+
+async function getCallStream() {
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error(t("microphonePermission"));
+  return navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+}
+
+function setupPeerConnection(callId, peerId, stream) {
+  const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+  stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+  pc.onicecandidate = (event) => {
+    if (event.candidate) sendCallSignal(callId, { candidate: event.candidate });
+  };
+  pc.ontrack = (event) => {
+    if (els.remoteCallAudio) els.remoteCallAudio.srcObject = event.streams[0];
+  };
+  pc.onconnectionstatechange = () => {
+    if (!state.activeCall || state.activeCall.id !== callId) return;
+    if (pc.connectionState === "connected") els.callStatus.textContent = t("callConnected");
+    if (["failed", "closed", "disconnected"].includes(pc.connectionState)) els.callStatus.textContent = t("callEnded");
+  };
+  state.activeCall.peerConnection = pc;
+  state.activeCall.peerId = peerId;
+  return pc;
+}
+
+async function applyCallSignal(signal) {
+  const active = state.activeCall;
+  if (!active?.peerConnection || !signal) return false;
+  const pc = active.peerConnection;
+  if (signal.description) {
+    await pc.setRemoteDescription(signal.description);
+    const queued = state.pendingCallSignals.get(active.id) || [];
+    state.pendingCallSignals.delete(active.id);
+    if (signal.description.type === "offer") {
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await sendCallSignal(active.id, { description: pc.localDescription });
+    }
+    for (const queuedSignal of queued) await applyCallSignal(queuedSignal);
+    return true;
+  }
+  if (signal.candidate) {
+    if (!pc.remoteDescription) {
+      const queued = state.pendingCallSignals.get(active.id) || [];
+      queued.push(signal);
+      state.pendingCallSignals.set(active.id, queued);
+      return false;
+    }
+    await pc.addIceCandidate(signal.candidate);
+    return true;
+  }
+  return false;
+}
+
+async function flushPendingCallSignals(callId) {
+  const signals = state.pendingCallSignals.get(callId) || [];
+  state.pendingCallSignals.delete(callId);
+  for (const signal of signals) await applyCallSignal(signal);
+}
+
+async function beginVoiceCall(user) {
+  if (!user) return showToast(t("callUnavailable"));
+  if (state.activeCall) return showToast(t("calling"));
+  try {
+    const stream = await getCallStream();
+    const { call } = await api("/api/calls", {
+      method: "POST",
+      body: JSON.stringify({ recipientId: user.id })
+    });
+    state.activeCall = { ...call, peerUser: user, localStream: stream, direction: "outgoing" };
+    showCallWindow(user, t("calling"), false);
+    const pc = setupPeerConnection(call.id, user.id, stream);
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await sendCallSignal(call.id, { description: pc.localDescription });
+  } catch (error) {
+    showToast(error.message || t("microphonePermission"));
+    endLocalCall(false);
+  }
+}
+
+function receiveIncomingCall(call) {
+  if (!state.user || call.toId !== state.user.id || call.status !== "ringing") return;
+  if (state.activeCall) {
+    sendCallAction(call.id, "reject").catch(() => {});
+    return;
+  }
+  const user = call.fromUser || state.users.get(call.fromId);
+  state.activeCall = { ...call, peerUser: user, direction: "incoming" };
+  showCallWindow(user, t("incomingCall"), true);
+  playTone("receive");
+}
+
+async function acceptIncomingCall() {
+  const active = state.activeCall;
+  if (!active) return;
+  try {
+    const stream = await getCallStream();
+    state.activeCall.localStream = stream;
+    await sendCallAction(active.id, "accept");
+    els.acceptCallButton.classList.add("hidden");
+    els.rejectCallButton.classList.add("hidden");
+    els.endCallButton.classList.remove("hidden");
+    els.callStatus.textContent = t("callConnected");
+    setupPeerConnection(active.id, active.fromId, stream);
+    await flushPendingCallSignals(active.id);
+  } catch (error) {
+    showToast(error.message || t("microphonePermission"));
+    await endLocalCall(true, "reject");
+  }
+}
+
+async function endLocalCall(send = true, action = "end") {
+  const active = state.activeCall;
+  state.activeCall = null;
+  if (active?.peerConnection) active.peerConnection.close();
+  active?.localStream?.getTracks().forEach((track) => track.stop());
+  if (els.remoteCallAudio) els.remoteCallAudio.srcObject = null;
+  closeCallWindowOnly();
+  if (send && active?.id) {
+    try {
+      await sendCallAction(active.id, action);
+    } catch (error) {
+      showToast(error.message);
+    }
+  }
+  loadCalls().catch(() => {});
+}
+
+async function handleCallSignal(payload) {
+  if (!state.user || payload.toId !== state.user.id) return;
+  if (!state.activeCall || state.activeCall.id !== payload.callId || !state.activeCall.peerConnection) {
+    const queued = state.pendingCallSignals.get(payload.callId) || [];
+    queued.push(payload.signal);
+    state.pendingCallSignals.set(payload.callId, queued);
+    return;
+  }
+  try {
+    await applyCallSignal(payload.signal);
+  } catch {
+    els.callStatus.textContent = t("callEnded");
+  }
+}
+
+function handleCallUpdate(payload) {
+  const call = payload.call;
+  if (!state.user || !call || (call.fromId !== state.user.id && call.toId !== state.user.id)) return;
+  state.calls = [call, ...state.calls.filter((item) => item.id !== call.id)];
+  renderCalls();
+  if (!state.activeCall || state.activeCall.id !== call.id) return;
+  els.callStatus.textContent = callStatusText(call);
+  if (["ended", "missed", "rejected"].includes(call.status)) endLocalCall(false);
+}
+
+function renderCalls() {
+  if (!els.callUsers || !els.callHistory) return;
+  const users = Array.from(state.users.values());
+  els.callUsers.innerHTML = users.length ? users.map((user) => `
+    <div class="call-row">
+      <span class="avatar" data-avatar-user="${escapeHtml(user.id)}">${escapeHtml(initials(user.name))}</span>
+      <span><strong>${escapeHtml(user.name)}</strong><small>@${escapeHtml(user.username)}</small></span>
+      <button type="button" data-call-user="${escapeHtml(user.id)}" aria-label="${escapeHtml(t("voiceCall"))}"><ion-icon name="call-outline"></ion-icon></button>
+    </div>
+  `).join("") : `<p class="empty-users">${escapeHtml(t("noOtherAccounts"))}</p>`;
+  els.callUsers.querySelectorAll("[data-avatar-user]").forEach((node) => setAvatar(node, state.users.get(node.dataset.avatarUser)));
+  els.callUsers.querySelectorAll("[data-call-user]").forEach((button) => {
+    button.addEventListener("click", () => beginVoiceCall(state.users.get(button.dataset.callUser)));
+  });
+  if (!state.calls.length) {
+    els.callHistory.innerHTML = `<p class="empty-users">${escapeHtml(t("noCalls"))}</p>`;
+    return;
+  }
+  const now = new Date();
+  const monthKey = `${now.getFullYear()}-${now.getMonth()}`;
+  const groups = new Map();
+  state.calls.forEach((call) => {
+    const date = new Date(call.startedAt);
+    const key = date.toDateString() === now.toDateString() ? t("callToday") : `${date.getFullYear()}-${date.getMonth()}` === monthKey ? t("callThisMonth") : t("callOlder");
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(call);
+  });
+  els.callHistory.innerHTML = Array.from(groups.entries()).map(([title, calls]) => `
+    <div class="call-section-title">${escapeHtml(title)}</div>
+    ${calls.map((call) => {
+      const user = callPeerUser(call);
+      const date = new Date(call.startedAt);
+      return `<div class="call-row">
+        <span class="avatar">${escapeHtml(initials(user?.name || t("user")))}</span>
+        <span><strong>${escapeHtml(user?.name || t("user"))}</strong><small>${escapeHtml(callStatusText(call))} · ${date.toLocaleTimeString(state.language || "ar", { hour: "2-digit", minute: "2-digit" })}</small></span>
+        <button type="button" data-call-user="${escapeHtml(user?.id || "")}" aria-label="${escapeHtml(t("voiceCall"))}"><ion-icon name="call-outline"></ion-icon></button>
+      </div>`;
+    }).join("")}
+  `).join("");
+  els.callHistory.querySelectorAll("[data-call-user]").forEach((button) => {
+    button.addEventListener("click", () => beginVoiceCall(state.users.get(button.dataset.callUser)));
+  });
+}
+
+async function loadCalls() {
+  const { calls } = await api("/api/calls");
+  state.calls = calls || [];
+  renderCalls();
+}
+
+async function openCallsModal() {
+  closeAllMenus();
+  closeAllModals(els.callsModal);
+  showOverlay();
+  showFloatingElement(els.callsModal);
+  await loadCalls();
+}
+
 function isShown(node) {
   return node && !node.classList.contains("hidden") && !node.classList.contains("is-closing");
 }
@@ -494,7 +808,7 @@ function setViewerOverlay(active) {
 }
 
 function hideOverlay() {
-  if (isShown(els.messageContextMenu) || isShown(els.shareModal) || isShown(els.editModal) || isShown(els.confirmModal) || isShown(els.viewerModal)) return;
+  if (isShown(els.messageContextMenu) || isShown(els.shareModal) || isShown(els.editModal) || isShown(els.confirmModal) || isShown(els.viewerModal) || isShown(els.callsModal) || isShown(els.callWindow)) return;
   setViewerOverlay(false);
   hideFloatingElement(els.messageOverlay);
 }
@@ -507,7 +821,7 @@ function closeAllMenus(except) {
 }
 
 function closeAllModals(except) {
-  [els.shareModal, els.editModal, els.confirmModal, els.viewerModal].forEach((modal) => {
+  [els.shareModal, els.editModal, els.confirmModal, els.viewerModal, els.callsModal, els.callWindow].forEach((modal) => {
     if (modal !== except) hideFloatingElement(modal);
   });
 }
@@ -2180,6 +2494,16 @@ function startEvents() {
   state.events.addEventListener("typing", (event) => {
     handleTyping(JSON.parse(event.data));
   });
+  state.events.addEventListener("call", (event) => {
+    const payload = JSON.parse(event.data);
+    receiveIncomingCall(payload.call);
+  });
+  state.events.addEventListener("callSignal", (event) => {
+    handleCallSignal(JSON.parse(event.data));
+  });
+  state.events.addEventListener("callUpdate", (event) => {
+    handleCallUpdate(JSON.parse(event.data));
+  });
   state.events.onerror = () => {
     if (!els.chatPage.classList.contains("hidden")) els.statusLine.textContent = t("reconnecting");
   };
@@ -2403,6 +2727,7 @@ els.avatarInput.addEventListener("change", () => {
 
 els.chatMenuButton.addEventListener("click", (event) => {
   event.stopPropagation();
+  els.voiceCallButton?.classList.toggle("hidden", state.activeChat.type !== "direct");
   toggleMenu(els.chatMenu);
 });
 
@@ -2450,6 +2775,8 @@ function closeOverlayPanels() {
   closeEditModal();
   closeConfirmModal();
   closeViewerModal();
+  hideFloatingElement(els.callsModal);
+  closeCallWindowOnly();
 }
 
 els.messageOverlay.addEventListener("pointerdown", closeOverlayPanels);
@@ -2547,6 +2874,20 @@ els.confirmActionButton?.addEventListener("click", async () => {
   }
 });
 els.closeViewerModal.addEventListener("click", closeViewerModal);
+els.callsTabButton?.addEventListener("click", openCallsModal);
+els.closeCallsModal?.addEventListener("click", () => {
+  hideFloatingElement(els.callsModal);
+  hideOverlay();
+});
+els.voiceCallButton?.addEventListener("click", () => {
+  hideFloatingElement(els.chatMenu);
+  if (state.activeChat.type !== "direct" || !state.activeChat.user) return showToast(t("callUnavailable"));
+  beginVoiceCall(state.activeChat.user);
+});
+els.closeCallWindow?.addEventListener("click", closeCallWindowOnly);
+els.acceptCallButton?.addEventListener("click", acceptIncomingCall);
+els.rejectCallButton?.addEventListener("click", () => endLocalCall(true, "reject"));
+els.endCallButton?.addEventListener("click", () => endLocalCall(true, "end"));
 
 els.shareSelectedButton.addEventListener("click", async () => {
   const messages = state.selectedMessageIds.size > 0 ? selectedMessages() : [state.selectedMessage].filter(Boolean);
