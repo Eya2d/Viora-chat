@@ -1277,12 +1277,12 @@ async function openAttachmentViewer(media, options = {}) {
   showFloatingElement(els.viewerModal);
 
   if (activeMedia.type === "image") {
-    const renderViewerImage = (index) => {
+    const renderViewerImage = (index, direction = "") => {
       const current = viewerGroup ? viewerGroup[index] : activeMedia;
       setViewerDownloadTarget(current);
       els.viewerBody.textContent = "";
       const image = document.createElement("img");
-      image.className = "viewer-image";
+      image.className = `viewer-image${direction ? ` viewer-image-enter-${direction}` : ""}`;
       image.src = current.url;
       image.alt = current.name || t("image");
       els.viewerBody.appendChild(image);
@@ -1299,11 +1299,11 @@ async function openAttachmentViewer(media, options = {}) {
       next.innerHTML = '<ion-icon name="chevron-forward-outline"></ion-icon>';
       previous.addEventListener("click", () => {
         viewerIndex = (viewerIndex - 1 + viewerGroup.length) % viewerGroup.length;
-        renderViewerImage(viewerIndex);
+        renderViewerImage(viewerIndex, "left");
       });
       next.addEventListener("click", () => {
         viewerIndex = (viewerIndex + 1) % viewerGroup.length;
-        renderViewerImage(viewerIndex);
+        renderViewerImage(viewerIndex, "right");
       });
       els.viewerBody.append(previous, next);
     };
@@ -1949,9 +1949,23 @@ function filePreviewKind(file) {
 }
 
 function removeAttachment(index) {
+  const removedUrl = state.attachmentPreviewUrls[index];
   state.mediaFiles.splice(index, 1);
+  state.attachmentPreviewUrls.splice(index, 1);
+  if (removedUrl) URL.revokeObjectURL(removedUrl);
   els.mediaInput.value = "";
-  renderAttachmentPreviews();
+  const card = els.mediaPreview.querySelector(`.attachment-preview-card[data-index="${index}"]`);
+  if (card) card.remove();
+  if (!state.mediaFiles.length) {
+    els.mediaPreview.classList.add("hidden");
+    els.mediaPreview.textContent = "";
+    return;
+  }
+  els.mediaPreview.querySelectorAll(".attachment-preview-card").forEach((item, nextIndex) => {
+    item.dataset.index = String(nextIndex);
+    const button = item.querySelector(".attachment-remove");
+    if (button) button.dataset.index = String(nextIndex);
+  });
 }
 
 function clearAttachmentPreviewUrls() {
@@ -1987,7 +2001,7 @@ function renderAttachmentPreviews() {
   state.attachmentPreviewUrls = previews.map((preview) => preview.url);
   els.mediaPreview.classList.remove("hidden");
   els.mediaPreview.innerHTML = previews.map((preview, index) => `
-    <div class="attachment-preview-card">
+    <div class="attachment-preview-card" data-index="${index}">
       ${preview.html}
       <button class="attachment-remove" type="button" data-index="${index}" aria-label="${escapeHtml(t("removeFile"))}">
         <ion-icon name="close"></ion-icon>
@@ -2186,13 +2200,15 @@ async function submitMedia(caption) {
   sendTyping(true, "upload");
   const files = [...state.mediaFiles];
   const recipientId = currentRecipientId();
+  const captionText = String(caption || "").trim();
   try {
     if (files.length > 10) throw new Error(t("maxAttachments"));
-    const imagesOnlyGroup = files.length > 1 && files.every((file) => filePreviewKind(file) === "image");
+    const imagesOnly = files.every((file) => filePreviewKind(file) === "image");
+    const imagesOnlyGroup = files.length > 1 && imagesOnly;
     if (imagesOnlyGroup) {
       const formData = new FormData();
       files.forEach((file) => formData.append("media", file));
-      formData.append("caption", caption);
+      formData.append("caption", captionText);
       formData.append("recipientId", recipientId);
       const { message } = await api("/api/upload-group", {
         method: "POST",
@@ -2206,7 +2222,7 @@ async function submitMedia(caption) {
     for (const [index, file] of files.entries()) {
       const formData = new FormData();
       formData.append("media", file);
-      formData.append("caption", index === 0 ? caption : "");
+      formData.append("caption", imagesOnly && index === 0 ? captionText : "");
       formData.append("recipientId", recipientId);
       const { message } = await api("/api/upload", {
         method: "POST",
@@ -2216,7 +2232,12 @@ async function submitMedia(caption) {
       addMessage(message);
       if (index < files.length - 1) await waitForNextMessageLoad();
     }
-    if (files.length) playTone("send");
+    if (!imagesOnly && captionText) {
+      await waitForNextMessageLoad();
+      await submitText(captionText);
+    } else if (files.length) {
+      playTone("send");
+    }
   } finally {
     sendTyping(false, "upload");
   }
