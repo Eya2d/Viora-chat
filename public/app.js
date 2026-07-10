@@ -21,6 +21,7 @@ const state = {
   typingStopTimer: null,
   calls: [],
   activeCall: null,
+  speakerOn: true,
   pendingCallSignals: new Map(),
   audioContext: null,
   keepScrollBottomUntil: 0,
@@ -135,6 +136,7 @@ const els = {
   closeViewerModal: document.querySelector("#closeViewerModal"),
   callsModal: document.querySelector("#callsModal"),
   closeCallsModal: document.querySelector("#closeCallsModal"),
+  clearCallsButton: document.querySelector("#clearCallsButton"),
   callUsers: document.querySelector("#callUsers"),
   callHistory: document.querySelector("#callHistory"),
   callWindow: document.querySelector("#callWindow"),
@@ -144,6 +146,7 @@ const els = {
   closeCallWindow: document.querySelector("#closeCallWindow"),
   acceptCallButton: document.querySelector("#acceptCallButton"),
   rejectCallButton: document.querySelector("#rejectCallButton"),
+  speakerButton: document.querySelector("#speakerButton"),
   endCallButton: document.querySelector("#endCallButton"),
   remoteCallAudio: document.querySelector("#remoteCallAudio")
 };
@@ -277,7 +280,11 @@ Object.assign(TR.ar, {
   callThisMonth: "هذا الشهر",
   callOlder: "أقدم",
   microphonePermission: "اسمح باستخدام الميكروفون لإجراء المكالمة.",
-  callUnavailable: "المكالمات متاحة في المحادثات الخاصة فقط."
+  callUnavailable: "المكالمات متاحة في المحادثات الخاصة فقط.",
+  clearCallHistory: "حذف سجل المكالمات",
+  callHistoryCleared: "تم حذف سجل المكالمات.",
+  callAudioBlocked: "اضغط على نافذة الاتصال لتشغيل الصوت.",
+  speaker: "السبيكر"
 });
 Object.assign(TR.en, {
   voiceCall: "Voice call",
@@ -295,7 +302,11 @@ Object.assign(TR.en, {
   callThisMonth: "This month",
   callOlder: "Older",
   microphonePermission: "Allow microphone access to make the call.",
-  callUnavailable: "Calls are available in private chats only."
+  callUnavailable: "Calls are available in private chats only.",
+  clearCallHistory: "Clear call history",
+  callHistoryCleared: "Call history cleared.",
+  callAudioBlocked: "Tap the call window to play audio.",
+  speaker: "Speaker"
 });
 const translationKeys = Object.keys(TR.ar);
 Object.entries(EXTRA_TRANSLATIONS).forEach(([lang, values]) => {
@@ -540,7 +551,9 @@ function showCallWindow(user, status, incoming = false) {
   if (els.callAvatar) setAvatar(els.callAvatar, user);
   els.acceptCallButton.classList.toggle("hidden", !incoming);
   els.rejectCallButton.classList.toggle("hidden", !incoming);
+  els.speakerButton?.classList.remove("hidden");
   els.endCallButton.classList.toggle("hidden", incoming);
+  updateSpeakerButton();
   closeAllMenus();
   closeAllModals(els.callWindow);
   showOverlay();
@@ -569,7 +582,49 @@ async function sendCallSignal(callId, signal) {
 
 async function getCallStream() {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error(t("microphonePermission"));
-  return navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  return navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+      channelCount: 1,
+      sampleRate: 48000,
+      latency: 0
+    },
+    video: false
+  });
+}
+
+function playRemoteCallAudio(stream) {
+  if (!els.remoteCallAudio || !stream) return;
+  els.remoteCallAudio.srcObject = stream;
+  applySpeakerOutput();
+  els.remoteCallAudio.play?.().catch(() => showToast(t("callAudioBlocked")));
+}
+
+function updateSpeakerButton() {
+  if (!els.speakerButton) return;
+  els.speakerButton.classList.toggle("active", state.speakerOn);
+  els.speakerButton.innerHTML = `<ion-icon name="${state.speakerOn ? "volume-high-outline" : "volume-mute-outline"}"></ion-icon>`;
+}
+
+async function applySpeakerOutput() {
+  if (!els.remoteCallAudio) return;
+  els.remoteCallAudio.muted = !state.speakerOn;
+  els.remoteCallAudio.volume = state.speakerOn ? 1 : 0;
+  if (state.speakerOn && typeof els.remoteCallAudio.setSinkId === "function") {
+    try {
+      await els.remoteCallAudio.setSinkId("default");
+    } catch {
+      // Some browsers do not allow selecting an output device.
+    }
+  }
+  updateSpeakerButton();
+}
+
+function toggleSpeaker() {
+  state.speakerOn = !state.speakerOn;
+  applySpeakerOutput();
 }
 
 function setupPeerConnection(callId, peerId, stream) {
@@ -579,7 +634,7 @@ function setupPeerConnection(callId, peerId, stream) {
     if (event.candidate) sendCallSignal(callId, { candidate: event.candidate });
   };
   pc.ontrack = (event) => {
-    if (els.remoteCallAudio) els.remoteCallAudio.srcObject = event.streams[0];
+    playRemoteCallAudio(event.streams[0]);
   };
   pc.onconnectionstatechange = () => {
     if (!state.activeCall || state.activeCall.id !== callId) return;
@@ -683,7 +738,10 @@ async function endLocalCall(send = true, action = "end") {
   state.activeCall = null;
   if (active?.peerConnection) active.peerConnection.close();
   active?.localStream?.getTracks().forEach((track) => track.stop());
-  if (els.remoteCallAudio) els.remoteCallAudio.srcObject = null;
+  if (els.remoteCallAudio) {
+    els.remoteCallAudio.pause();
+    els.remoteCallAudio.srcObject = null;
+  }
   closeCallWindowOnly();
   if (send && active?.id) {
     try {
@@ -768,6 +826,13 @@ async function loadCalls() {
   const { calls } = await api("/api/calls");
   state.calls = calls || [];
   renderCalls();
+}
+
+async function clearCallHistory() {
+  await api("/api/calls", { method: "DELETE" });
+  state.calls = [];
+  renderCalls();
+  showToast(t("callHistoryCleared"));
 }
 
 async function openCallsModal() {
@@ -2879,12 +2944,18 @@ els.closeCallsModal?.addEventListener("click", () => {
   hideFloatingElement(els.callsModal);
   hideOverlay();
 });
+els.clearCallsButton?.addEventListener("click", clearCallHistory);
 els.voiceCallButton?.addEventListener("click", () => {
   hideFloatingElement(els.chatMenu);
   if (state.activeChat.type !== "direct" || !state.activeChat.user) return showToast(t("callUnavailable"));
   beginVoiceCall(state.activeChat.user);
 });
 els.closeCallWindow?.addEventListener("click", closeCallWindowOnly);
+els.callWindow?.addEventListener("click", () => els.remoteCallAudio?.play?.().catch(() => {}));
+els.speakerButton?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleSpeaker();
+});
 els.acceptCallButton?.addEventListener("click", acceptIncomingCall);
 els.rejectCallButton?.addEventListener("click", () => endLocalCall(true, "reject"));
 els.endCallButton?.addEventListener("click", () => endLocalCall(true, "end"));
