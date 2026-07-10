@@ -134,20 +134,22 @@
         <div class="messages" id="messages" aria-live="polite"></div>
 
         <form class="composer" id="composer">
-          <input id="mediaInput" name="media" type="file" accept="image/*,video/*,audio/*,.pdf,.txt,.doc,.docx,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
-          <button class="tool-button" id="attachButton" type="button" title="إرفاق ملف" aria-label="إرفاق ملف" data-i18n-title="attachFile" data-i18n-aria="attachFile"><ion-icon name="attach-outline"></ion-icon></button>
-          <div class="message-box">
-            <div id="mediaPreview" class="media-preview hidden"></div>
-            <textarea id="messageInput" name="text" rows="1" placeholder="اكتب رسالة" maxlength="2000" data-i18n-placeholder="writeMessage"></textarea>
+          <div id="mediaPreview" class="media-preview hidden"></div>
+          <div class="ccc">
+              <input id="mediaInput" name="media" type="file" accept="image/*,video/*,audio/*,.pdf,.txt,.doc,.docx,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple hidden>
+              <button class="tool-button" id="attachButton" type="button" title="إرفاق ملف" aria-label="إرفاق ملف" data-i18n-title="attachFile" data-i18n-aria="attachFile"><ion-icon name="attach-outline"></ion-icon></button>
+              <div class="message-box">
+                <textarea id="messageInput" name="text" rows="1" placeholder="اكتب رسالة" maxlength="2000" data-i18n-placeholder="writeMessage"></textarea>
+              </div>
+              <button class="tool-button" id="recordButton" type="button" title="تسجيل صوت" aria-label="تسجيل صوت" data-i18n-title="recordAudio" data-i18n-aria="recordAudio"><ion-icon name="mic"></ion-icon></button>
+              <button class="tool-button" id="composerMenuButton" type="button" title="خيارات الإرسال" aria-label="خيارات الإرسال" data-i18n-title="sendOptions" data-i18n-aria="sendOptions"><ion-icon name="ellipsis-vertical"></ion-icon></button>
+              <div class="menu composer-menu hidden" id="composerMenu">
+                <button type="button" id="composerSearchButton" data-i18n="searchMessages">بحث في الرسائل</button>
+                <button type="button" id="clearDraftButton" data-i18n="clearDraft">مسح الكتابة</button>
+                <button type="button" id="clearAttachmentButton" data-i18n="removeAttachment">إزالة المرفق</button>
+              </div>
+              <button class="send-button" type="submit" title="إرسال" aria-label="إرسال" data-i18n-title="send" data-i18n-aria="send"><ion-icon name="send"></ion-icon></button>
           </div>
-          <button class="tool-button" id="recordButton" type="button" title="تسجيل صوت" aria-label="تسجيل صوت" data-i18n-title="recordAudio" data-i18n-aria="recordAudio"><ion-icon name="mic"></ion-icon></button>
-          <button class="tool-button" id="composerMenuButton" type="button" title="خيارات الإرسال" aria-label="خيارات الإرسال" data-i18n-title="sendOptions" data-i18n-aria="sendOptions"><ion-icon name="ellipsis-vertical"></ion-icon></button>
-          <div class="menu composer-menu hidden" id="composerMenu">
-            <button type="button" id="composerSearchButton" data-i18n="searchMessages">بحث في الرسائل</button>
-            <button type="button" id="clearDraftButton" data-i18n="clearDraft">مسح الكتابة</button>
-            <button type="button" id="clearAttachmentButton" data-i18n="removeAttachment">إزالة المرفق</button>
-          </div>
-          <button class="send-button" type="submit" title="إرسال" aria-label="إرسال" data-i18n-title="send" data-i18n-aria="send"><ion-icon name="send"></ion-icon></button>
         </form>
       </section>
 
