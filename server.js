@@ -469,6 +469,7 @@ async function updateCall(req, res, callId) {
     });
     return json(res, 200, { ok: true });
   }
+  call.lastActionBy = auth.user.id;
   if (action === "accept") {
     call.status = "active";
     call.answeredAt = call.answeredAt || new Date().toISOString();
@@ -483,7 +484,7 @@ async function updateCall(req, res, callId) {
   }
   saveDb();
   const payloadCall = callPayload(call);
-  broadcast("callUpdate", { action, call: payloadCall });
+  broadcast("callUpdate", { action, call: payloadCall, actor: publicUser(auth.user) });
   json(res, 200, { call: callPayload(call, auth.user.id) });
 }
 
