@@ -87,7 +87,7 @@
         <nav class="tabs-bar" aria-label="أقسام واتساب">
           <button class="active" type="button" data-i18n="chats">الدردشات</button>
           <button type="button" data-i18n="status">الحالات</button>
-          <button type="button" data-i18n="calls">المكالمات</button>
+          <button type="button" id="callsTabButton" data-i18n="calls">المكالمات</button>
         </nav>
 
         <section class="chat-list">
@@ -120,6 +120,7 @@
           <button class="icon-button ccvv" id="messageSearchButton" type="button" title="بحث" aria-label="بحث" data-i18n-title="search" data-i18n-aria="search"><ion-icon name="search-outline"></ion-icon></button>
           <button class="icon-button ccvv" id="chatMenuButton" type="button" title="مزيد" aria-label="مزيد" data-i18n-title="more" data-i18n-aria="more"><ion-icon name="ellipsis-vertical"></ion-icon></button>
           <div class="menu chat-menu hidden" id="chatMenu">
+            <button type="button" id="voiceCallButton" data-i18n="voiceCall">مكالمة صوتية</button>
             <button type="button" id="openMessageSearch" data-i18n="searchMessages">بحث في الرسائل</button>
             <button type="button" id="scrollBottomButton" data-i18n="lastMessage">آخر رسالة</button>
             <button type="button" id="clearChatButton" data-i18n="clearChat">مسح محتوى الدردشة</button>
@@ -286,6 +287,32 @@
         </div>
       </header>
       <div class="viewer-body" id="viewerBody"></div>
+    </section>
+    <section class="calls-modal hidden" id="callsModal" aria-label="المكالمات" data-i18n-aria="calls">
+      <header>
+        <h2 data-i18n="calls">المكالمات</h2>
+        <button type="button" id="closeCallsModal" aria-label="إغلاق" data-i18n-aria="close">×</button>
+      </header>
+      <div class="calls-modal-body">
+        <div class="call-users" id="callUsers"></div>
+        <div class="call-history" id="callHistory"></div>
+      </div>
+    </section>
+    <section class="call-window hidden" id="callWindow" aria-label="مكالمة صوتية" data-i18n-aria="voiceCall">
+      <header>
+        <span class="avatar" id="callAvatar">V</span>
+        <div>
+          <h2 id="callTitle">مكالمة صوتية</h2>
+          <p id="callStatus">جاري الاتصال...</p>
+        </div>
+        <button type="button" id="closeCallWindow" aria-label="إغلاق" data-i18n-aria="close">×</button>
+      </header>
+      <div class="call-actions">
+        <button class="primary hidden" type="button" id="acceptCallButton" data-i18n="acceptCall">قبول</button>
+        <button class="danger-button hidden" type="button" id="rejectCallButton" data-i18n="rejectCall">رفض</button>
+        <button class="danger-button" type="button" id="endCallButton" data-i18n="endCall">إنهاء الاتصال</button>
+      </div>
+      <audio id="remoteCallAudio" autoplay playsinline></audio>
     </section>
     <script src="/app.js"></script>
   </body>
