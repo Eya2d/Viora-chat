@@ -56,7 +56,7 @@ const allowedAttachments = new Set([
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 ]);
 
-let db = { users: [], sessions: [], messages: [] };
+let db = { users: [], sessions: [], messages: [], calls: [] };
 const clients = new Set();
 
 function ensureStorage() {
@@ -66,6 +66,7 @@ function ensureStorage() {
     fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
   }
   db = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+  if (!Array.isArray(db.calls)) db.calls = [];
 }
 
 function saveDb() {
@@ -381,6 +382,93 @@ function directConversationId(userA, userB) {
 
 function canMessageUser(userId) {
   return db.users.some((user) => user.id === userId);
+}
+
+function callPayload(call, currentUserId = "") {
+  const otherId = call.fromId === currentUserId ? call.toId : call.fromId;
+  const other = db.users.find((user) => user.id === otherId);
+  const from = db.users.find((user) => user.id === call.fromId);
+  const to = db.users.find((user) => user.id === call.toId);
+  return {
+    ...call,
+    otherUser: other ? publicUser(other) : null,
+    fromUser: from ? publicUser(from) : null,
+    toUser: to ? publicUser(to) : null
+  };
+}
+
+function findCallForUser(callId, userId) {
+  return db.calls.find((call) => call.id === callId && (call.fromId === userId || call.toId === userId));
+}
+
+async function getCalls(req, res) {
+  const auth = requireAuth(req, res);
+  if (!auth) return;
+  const calls = db.calls
+    .filter((call) => call.fromId === auth.user.id || call.toId === auth.user.id)
+    .sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt))
+    .slice(0, 80)
+    .map((call) => callPayload(call, auth.user.id));
+  json(res, 200, { calls });
+}
+
+async function startCall(req, res) {
+  const auth = requireAuth(req, res);
+  if (!auth) return;
+  const payload = JSON.parse((await getBody(req)).toString("utf8") || "{}");
+  const recipientId = String(payload.recipientId || "");
+  if (!recipientId || recipientId === auth.user.id || !canMessageUser(recipientId)) {
+    return json(res, 400, { error: "اختر حسابًا صحيحًا للاتصال." });
+  }
+  const call = {
+    id: crypto.randomUUID(),
+    fromId: auth.user.id,
+    toId: recipientId,
+    type: "voice",
+    status: "ringing",
+    startedAt: new Date().toISOString(),
+    answeredAt: null,
+    endedAt: null
+  };
+  db.calls.push(call);
+  saveDb();
+  broadcast("call", { type: "incoming", call: callPayload(call) });
+  json(res, 201, { call: callPayload(call, auth.user.id) });
+}
+
+async function updateCall(req, res, callId) {
+  const auth = requireAuth(req, res);
+  if (!auth) return;
+  const call = findCallForUser(callId, auth.user.id);
+  if (!call) return json(res, 404, { error: "المكالمة غير موجودة." });
+  const payload = JSON.parse((await getBody(req)).toString("utf8") || "{}");
+  const action = String(payload.action || "");
+  const otherId = call.fromId === auth.user.id ? call.toId : call.fromId;
+  if (action === "signal") {
+    broadcast("callSignal", {
+      callId: call.id,
+      fromId: auth.user.id,
+      toId: otherId,
+      signal: payload.signal || null
+    });
+    return json(res, 200, { ok: true });
+  }
+  if (action === "accept") {
+    call.status = "active";
+    call.answeredAt = call.answeredAt || new Date().toISOString();
+  } else if (action === "reject") {
+    call.status = "rejected";
+    call.endedAt = call.endedAt || new Date().toISOString();
+  } else if (action === "end") {
+    call.status = call.answeredAt ? "ended" : "missed";
+    call.endedAt = call.endedAt || new Date().toISOString();
+  } else {
+    return json(res, 400, { error: "إجراء المكالمة غير صحيح." });
+  }
+  saveDb();
+  const payloadCall = callPayload(call);
+  broadcast("callUpdate", { action, call: payloadCall });
+  json(res, 200, { call: callPayload(call, auth.user.id) });
 }
 
 function findMessage(messageId) {
@@ -827,10 +915,12 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { user: publicUser(auth.user), rememberToken });
     }
     if (req.method === "GET" && url.pathname === "/api/messages") return getMessages(req, res);
+    if (req.method === "GET" && url.pathname === "/api/calls") return getCalls(req, res);
     if (req.method === "GET" && url.pathname === "/api/users") return getUsers(req, res);
     if (req.method === "POST" && url.pathname === "/api/profile") return updateProfile(req, res);
     if (req.method === "POST" && url.pathname === "/api/messages") return createMessage(req, res);
     if (req.method === "POST" && url.pathname === "/api/typing") return updateTyping(req, res);
+    if (req.method === "POST" && url.pathname === "/api/calls") return startCall(req, res);
     if (req.method === "POST" && url.pathname === "/api/read") return markRead(req, res);
     if (req.method === "POST" && url.pathname === "/api/conversation/clear") return clearConversation(req, res);
     const deleteMatch = /^\/api\/messages\/([^/]+)\/delete$/.exec(url.pathname);
@@ -839,6 +929,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && editMatch) return editMessage(req, res, editMatch[1]);
     const forwardMatch = /^\/api\/messages\/([^/]+)\/forward$/.exec(url.pathname);
     if (req.method === "POST" && forwardMatch) return forwardMessage(req, res, forwardMatch[1]);
+    const callMatch = /^\/api\/calls\/([^/]+)$/.exec(url.pathname);
+    if (req.method === "POST" && callMatch) return updateCall(req, res, callMatch[1]);
     if (req.method === "POST" && url.pathname === "/api/upload") return uploadMedia(req, res);
     if (req.method === "POST" && url.pathname === "/api/upload-group") return uploadMediaGroup(req, res);
     if (req.method === "GET" && url.pathname === "/api/events") return stream(req, res);
