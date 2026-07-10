@@ -449,6 +449,7 @@ async function createMessage(req, res) {
     avatar: auth.user.avatar || "",
     text: text.slice(0, 2000),
     media: null,
+    mediaGroup: null,
     createdAt: new Date().toISOString(),
     deliveredAt: null,
     readAt: null
@@ -520,14 +521,19 @@ async function clearConversation(req, res) {
   const recipientId = String(payload.recipientId || "");
   if (recipientId && !canMessageUser(recipientId)) return json(res, 404, { error: "هذا الحساب غير موجود." });
   const conversationId = recipientId ? directConversationId(auth.user.id, recipientId) : "general";
-  const before = db.messages.length;
-  db.messages = db.messages.filter((message) => (message.conversationId || "general") !== conversationId);
-  const deleted = before - db.messages.length;
-  if (deleted) {
+  let hidden = 0;
+  db.messages.forEach((message) => {
+    if ((message.conversationId || "general") !== conversationId) return;
+    message.hiddenFor = Array.isArray(message.hiddenFor) ? message.hiddenFor : [];
+    if (!message.hiddenFor.includes(auth.user.id)) {
+      message.hiddenFor.push(auth.user.id);
+      hidden += 1;
+    }
+  });
+  if (hidden) {
     saveDb();
-    broadcast("conversationClear", { conversationId });
   }
-  json(res, 200, { ok: true, deleted });
+  json(res, 200, { ok: true, hidden });
 }
 
 async function editMessage(req, res, messageId) {
@@ -570,6 +576,7 @@ async function forwardMessage(req, res, messageId) {
     avatar: auth.user.avatar || "",
     text: source.text || "",
     media: source.media ? { ...source.media } : null,
+    mediaGroup: Array.isArray(source.mediaGroup) ? source.mediaGroup.map((item) => ({ ...item })) : null,
     forwardedFrom: {
       id: source.id,
       author: source.author,
@@ -621,6 +628,56 @@ async function uploadMedia(req, res) {
       url: storedFile.url,
       size: storedFile.size
     },
+    mediaGroup: null,
+    createdAt: new Date().toISOString(),
+    deliveredAt: null,
+    readAt: null
+  };
+  db.messages.push(message);
+  saveDb();
+  broadcast("message", message);
+  json(res, 201, { message: { ...message, mine: true } });
+}
+
+async function uploadMediaGroup(req, res) {
+  const auth = requireAuth(req, res);
+  if (!auth) return;
+  const buffer = await getBody(req, MAX_UPLOAD_BYTES);
+  const { fields, files } = parseMultipart(buffer, req.headers["content-type"]);
+  const mediaFiles = files.filter((item) => item.name === "media");
+  const caption = String(fields.caption || "").trim().slice(0, 500);
+  const recipientId = String(fields.recipientId || "");
+  if (!mediaFiles.length) return json(res, 400, { error: "اختر صورًا للإرسال." });
+  if (mediaFiles.length > 10) return json(res, 400, { error: "لا يمكن إرسال أكثر من 10 عناصر في المرة الواحدة." });
+  if (recipientId && !canMessageUser(recipientId)) return json(res, 404, { error: "هذا الحساب غير موجود." });
+
+  const group = [];
+  for (const file of mediaFiles) {
+    const fileType = normalizeMime(file.type);
+    if (!allowedAttachments.has(fileType) || !fileType.startsWith("image/")) {
+      return json(res, 400, { error: "يمكن تجميع الصور فقط. أرسل الفيديوهات والملفات بشكل منفصل." });
+    }
+    const storedFile = storeUploadedFile(file);
+    group.push({
+      type: "image",
+      mime: fileType,
+      name: storedFile.name,
+      url: storedFile.url,
+      size: storedFile.size
+    });
+  }
+
+  const message = {
+    id: crypto.randomUUID(),
+    userId: auth.user.id,
+    recipientId: recipientId || null,
+    conversationId: recipientId ? directConversationId(auth.user.id, recipientId) : "general",
+    author: auth.user.name,
+    username: auth.user.username,
+    avatar: auth.user.avatar || "",
+    text: caption,
+    media: null,
+    mediaGroup: group,
     createdAt: new Date().toISOString(),
     deliveredAt: null,
     readAt: null
@@ -783,6 +840,7 @@ const server = http.createServer(async (req, res) => {
     const forwardMatch = /^\/api\/messages\/([^/]+)\/forward$/.exec(url.pathname);
     if (req.method === "POST" && forwardMatch) return forwardMessage(req, res, forwardMatch[1]);
     if (req.method === "POST" && url.pathname === "/api/upload") return uploadMedia(req, res);
+    if (req.method === "POST" && url.pathname === "/api/upload-group") return uploadMediaGroup(req, res);
     if (req.method === "GET" && url.pathname === "/api/events") return stream(req, res);
     return serveStatic(req, res);
   } catch (error) {
