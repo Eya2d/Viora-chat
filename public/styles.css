@@ -1960,6 +1960,36 @@ html[dir="ltr"] .context-menu {
   object-fit: contain;
 }
 
+.viewer-image-enter-right {
+  animation: viewerImageFromRight 360ms ease both;
+}
+
+.viewer-image-enter-left {
+  animation: viewerImageFromLeft 360ms ease both;
+}
+
+@keyframes viewerImageFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(42px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes viewerImageFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-42px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 .viewer-nav {
   position: absolute;
   top: 50%;
