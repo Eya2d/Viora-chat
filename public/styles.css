@@ -2003,23 +2003,6 @@ html[dir="ltr"] .context-menu {
   gap: 10px;
 }
 
-.speaker-button {
-  display: grid;
-  place-items: center;
-  width: 42px;
-  height: 42px;
-  border: 0;
-  border-radius: 50%;
-  color: var(--text);
-  background: var(--soft);
-  font-size: 22px;
-}
-
-.speaker-button.active {
-  color: #fff;
-  background: var(--green);
-}
-
 .viewer-modal {
   width: min(94vw, 760px);
   height: min(86vh, 720px);
