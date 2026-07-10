@@ -360,6 +360,7 @@ function getMessages(req, res) {
   markConversationMessages(auth.user.id, conversationId, "deliveredAt");
   const messages = db.messages
     .filter((message) => (message.conversationId || "general") === conversationId)
+    .filter((message) => !Array.isArray(message.hiddenFor) || !message.hiddenFor.includes(auth.user.id))
     .slice(-300)
     .map((message) => ({
     ...message,
@@ -417,6 +418,7 @@ function markConversationMessages(userId, conversationId, field) {
     if ((message.conversationId || "general") !== conversationId) return;
     if (message.userId === userId) return;
     if (message.recipientId && message.recipientId !== userId) return;
+    if (Array.isArray(message.hiddenFor) && message.hiddenFor.includes(userId)) return;
     if (field === "readAt" && !message.deliveredAt) message.deliveredAt = now;
     if (message[field]) return;
     message[field] = now;
@@ -492,13 +494,40 @@ async function markRead(req, res) {
 async function deleteMessage(req, res, messageId) {
   const auth = requireAuth(req, res);
   if (!auth) return;
+  const payload = JSON.parse((await getBody(req)).toString("utf8") || "{}");
+  const mode = payload.mode === "everyone" ? "everyone" : "me";
   const message = findMessage(messageId);
   if (!message || !canReadMessage(auth.user.id, message)) return json(res, 404, { error: "الرسالة غير موجودة." });
+
+  if (mode === "me") {
+    message.hiddenFor = Array.isArray(message.hiddenFor) ? message.hiddenFor : [];
+    if (!message.hiddenFor.includes(auth.user.id)) message.hiddenFor.push(auth.user.id);
+    saveDb();
+    return json(res, 200, { ok: true, mode });
+  }
+
   if (message.userId !== auth.user.id) return json(res, 403, { error: "يمكنك حذف رسائلك فقط." });
   db.messages = db.messages.filter((item) => item.id !== messageId);
   saveDb();
   broadcast("messageDelete", { id: messageId, conversationId: message.conversationId || "general" });
-  json(res, 200, { ok: true });
+  json(res, 200, { ok: true, mode });
+}
+
+async function clearConversation(req, res) {
+  const auth = requireAuth(req, res);
+  if (!auth) return;
+  const payload = JSON.parse((await getBody(req)).toString("utf8") || "{}");
+  const recipientId = String(payload.recipientId || "");
+  if (recipientId && !canMessageUser(recipientId)) return json(res, 404, { error: "هذا الحساب غير موجود." });
+  const conversationId = recipientId ? directConversationId(auth.user.id, recipientId) : "general";
+  const before = db.messages.length;
+  db.messages = db.messages.filter((message) => (message.conversationId || "general") !== conversationId);
+  const deleted = before - db.messages.length;
+  if (deleted) {
+    saveDb();
+    broadcast("conversationClear", { conversationId });
+  }
+  json(res, 200, { ok: true, deleted });
 }
 
 async function editMessage(req, res, messageId) {
@@ -746,6 +775,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/messages") return createMessage(req, res);
     if (req.method === "POST" && url.pathname === "/api/typing") return updateTyping(req, res);
     if (req.method === "POST" && url.pathname === "/api/read") return markRead(req, res);
+    if (req.method === "POST" && url.pathname === "/api/conversation/clear") return clearConversation(req, res);
     const deleteMatch = /^\/api\/messages\/([^/]+)\/delete$/.exec(url.pathname);
     if (req.method === "POST" && deleteMatch) return deleteMessage(req, res, deleteMatch[1]);
     const editMatch = /^\/api\/messages\/([^/]+)\/edit$/.exec(url.pathname);
