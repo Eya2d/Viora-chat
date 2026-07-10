@@ -297,7 +297,7 @@ textarea {
 
 input {
   min-height: 42px;
-  /* padding: 0 12px; */
+  padding: 0 12px;
 }
 
 textarea {
@@ -684,11 +684,11 @@ html[dir="ltr"] .composer-menu {
   max-width: none;
   align-self: stretch;
   justify-content: flex-start;
+  padding: 0 36px;
 }
 
 .message-row.mine {
   justify-content: flex-end;
-  padding: 0 36px;
 }
 
 .message {
@@ -698,13 +698,18 @@ html[dir="ltr"] .composer-menu {
   padding: 8px 10px 6px;
   border-radius: 8px 0px 8px 8px;
   background: var(--bubble);
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 1px rgb(0 0 0 / 19%);
 }
 
 html[dir="ltr"] .message {
   direction: ltr;
   text-align: left;
   border-radius: 0px 8px 8px 8px;
+}
+
+html[dir="rtl"] .message.mine.with-tail::before {
+  left: -8px !important;
+  right: auto !important;
 }
 
 /* .message:hover {
@@ -744,11 +749,10 @@ html[dir="rtl"] .message-select {
   left: auto;
 }
 
-html[dir="rtl"] .message-row.mine .message-select {
+html[dir="rtl"] .message-row .message-select {
   left: auto;
   right: 12px;
-  margin-right: 36px;
-  margin-left: auto;
+  margin: 0 36px;
 }
 
 html[dir="ltr"] .message-select {
@@ -756,11 +760,19 @@ html[dir="ltr"] .message-select {
   right: auto;
 }
 
-html[dir="ltr"] .message-row.mine .message-select {
+html[dir="ltr"] .message-row .message-select {
   left: 12px;
   right: auto;
-  margin-left: 36px;
-  margin-right: auto;
+  margin: 0 36px;
+}
+
+html[dir="ltr"] .message-row-white .message-select {
+  right: 12px;
+  left: auto;
+}
+html[dir="rtl"] .message-row-white .message-select {
+  left: 12px;
+  right: auto;
 }
 
 .messages.selection-mode .message-select {
@@ -830,6 +842,11 @@ html[dir="ltr"] .message.mine {
   height: 12px;
   background: var(--bubble);
   clip-path: polygon(0% 0, 0% 100%, 100% 0%);
+}
+
+html[dir="rtl"] .message.with-tail::before {
+  left: auto;
+  right: -8px;
 }
 
 .message.mine.with-tail::before {
@@ -1001,6 +1018,7 @@ html[dir="ltr"] .message time {
   cursor: pointer;
   touch-action: none;
   user-select: none;
+  padding: 0;
 }
 
 .video-thumb {
@@ -1137,9 +1155,7 @@ body.ccvve {
 
 .composer {
   position: relative;
-  display: flex;
-  align-items: flex-end;
-  gap: 6px;
+
   padding: 10px 12px;
   background: var(--soft);
   border-top: 1px solid var(--line);
@@ -1147,6 +1163,11 @@ body.ccvve {
 }
 .composer button {
   margin: 1px 0;
+}
+.ccc {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
 }
 
 .chat-page.selection-mode .composer {
@@ -1192,8 +1213,9 @@ body.ccvve {
 
 .media-preview {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: flex-start;
+  justify-content: flex-start;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 8px;
   padding: 8px 10px;
@@ -1245,16 +1267,12 @@ body.ccvve {
 
 .media-preview button {
   border: 0;
-  color: var(--danger);
-  background: transparent;
 }
 
 .attachment-preview-card {
-  display: grid;
-  grid-template-columns: 54px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
+  position: relative;
+  width: 58px;
+  height: 58px;
 }
 
 .preview-thumb {
@@ -1266,6 +1284,27 @@ body.ccvve {
   overflow: hidden;
   border-radius: 8px;
   background: var(--soft);
+}
+
+.attachment-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(17, 24, 39, 0.82);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+
+.attachment-remove ion-icon {
+  font-size: 16px;
 }
 
 .preview-thumb img,
@@ -1300,19 +1339,6 @@ body.ccvve {
   color: #fff;
   background: rgba(0, 0, 0, 0.58);
   transform: translate(-50%, -50%);
-}
-
-.preview-info {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.preview-info strong,
-.preview-info small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .send-button {
@@ -1531,6 +1557,66 @@ html[dir="ltr"] .settings-action > ion-icon {
   color: #fff;
   background: rgba(19, 32, 29, 0.94);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+}
+
+.clear-chat-pending {
+  align-self: center;
+  width: min(92%, 430px);
+  margin: 10px auto;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--danger) 24%, var(--line));
+  border-radius: 8px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--danger) 7%, var(--panel));
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.12);
+}
+
+.clear-chat-pending-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.clear-chat-pending-row span {
+  min-width: 0;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.clear-chat-pending-row button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  background: var(--green);
+  cursor: pointer;
+}
+
+.clear-chat-progress {
+  display: block;
+  height: 4px;
+  margin-top: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+.clear-chat-progress span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--danger);
+  animation: clearChatProgress 5s linear forwards;
+}
+
+@keyframes clearChatProgress {
+  to {
+    width: 100%;
+  }
 }
 
 .message-overlay {
@@ -1925,16 +2011,14 @@ html[dir="rtl"] .message-search input {
 
 @media (max-width: 760px) {
 
-  .message-row.mine {
+  .message-row {
     padding: 0 8px;
   }
-  html[dir="rtl"] .message-row.mine .message-select {
-    margin-right: 8px;
-    margin-left: auto;
+  html[dir="rtl"] .message-row .message-select {
+    margin: 0 8px;
   }
-  html[dir="ltr"] .message-row.mine .message-select {
-    margin-left: 8px;
-    margin-right: auto;
+  html[dir="ltr"] .message-row .message-select {
+    margin: 0 8px;
   }
 
   
