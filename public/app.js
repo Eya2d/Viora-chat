@@ -6,6 +6,7 @@ const state = {
   mediaFiles: [],
   attachmentPreviewUrls: [],
   messageLoadId: 0,
+  isSending: false,
   activeChat: { type: "general", user: null },
   search: "",
   messageSearch: "",
@@ -236,6 +237,12 @@ TR.ar.undoClearChat = "تراجع";
 TR.en.undoClearChat = "Undo";
 TR.ar.clearChatCanceled = "تم التراجع عن مسح الدردشة.";
 TR.en.clearChatCanceled = "Chat clearing canceled.";
+TR.ar.maxAttachments = "لا يمكن إرسال أكثر من 10 عناصر في المرة الواحدة.";
+TR.en.maxAttachments = "You can send up to 10 items at once.";
+TR.ar.sendingInProgress = "انتظر حتى ينتهي إرسال المرفقات الحالية.";
+TR.en.sendingInProgress = "Wait until the current attachments finish sending.";
+TR.ar.serverNeedsRestart = "أعد تشغيل الخادم لتفعيل تحديثات إرسال الصور.";
+TR.en.serverNeedsRestart = "Restart the server to enable the new photo sending updates.";
 const translationKeys = Object.keys(TR.ar);
 Object.entries(EXTRA_TRANSLATIONS).forEach(([lang, values]) => {
   TR[lang] = Object.fromEntries(translationKeys.map((key, index) => [key, values[index] || TR.en[key] || TR.ar[key]]));
@@ -371,7 +378,12 @@ async function api(path, options = {}) {
     ...options,
     headers: { ...headers, ...(options.headers || {}) }
   });
-  const payload = await response.json().catch(() => ({}));
+  let payload = {};
+  try {
+    payload = await response.json();
+  } catch {
+    if (String(path).startsWith("/api/")) throw new Error(t("serverNeedsRestart"));
+  }
   if (!response.ok) throw new Error(payload.error || t("unexpectedError"));
   return payload;
 }
@@ -404,6 +416,7 @@ function conversationIdFor(type = state.activeChat.type, user = state.activeChat
 }
 
 function messageConversationId(message) {
+  if (!message) return "general";
   return message.conversationId || "general";
 }
 
@@ -688,6 +701,7 @@ function handleTyping(payload) {
 }
 
 function addMessage(message) {
+  if (!message?.id) return;
   if (!messageBelongsToActiveChat(message) || state.messages.has(message.id)) return;
   const previousMessages = Array.from(state.messages.values()).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
   const previousMessage = previousMessages[previousMessages.length - 1] || null;
@@ -700,6 +714,7 @@ function addMessage(message) {
 }
 
 function upsertMessage(message) {
+  if (!message?.id) return;
   if (!messageBelongsToActiveChat(message)) return;
   state.messages.set(message.id, message);
   rerenderMessages();
@@ -845,6 +860,7 @@ function renderMessage(message, previousMessage = null) {
     forwarded.textContent = t("forwarded");
     body.appendChild(forwarded);
   }
+  if (Array.isArray(message.mediaGroup) && message.mediaGroup.length) body.appendChild(renderMediaGroup(message.mediaGroup));
   if (message.media) body.appendChild(renderMedia(message.media));
   if (message.text) {
     const text = document.createElement("p");
@@ -972,7 +988,8 @@ function scrollMessagesToBottom(duration = 1600) {
 function matchesMessageSearch(message) {
   const query = normalizeForSearch(state.messageSearch);
   if (!query) return true;
-  const haystack = normalizeForSearch(`${message.author || ""} ${message.username || ""} ${message.text || ""} ${message.media?.name || ""} ${message.media?.mime || ""}`);
+  const groupText = Array.isArray(message.mediaGroup) ? message.mediaGroup.map((item) => `${item.name || ""} ${item.mime || ""}`).join(" ") : "";
+  const haystack = normalizeForSearch(`${message.author || ""} ${message.username || ""} ${message.text || ""} ${message.media?.name || ""} ${message.media?.mime || ""} ${groupText}`);
   return haystack.includes(query);
 }
 
@@ -1310,6 +1327,7 @@ async function openAttachmentViewer(media) {
 }
 
 function messageBelongsToActiveChat(message) {
+  if (!message) return false;
   if (state.activeChat.type === "general") return (message.conversationId || "general") === "general";
   const otherId = state.activeChat.user?.id;
   return message.conversationId === directConversationId(state.user.id, otherId);
@@ -1324,12 +1342,7 @@ function renderMedia(media) {
   wrapper.className = "media-wrapper";
   let mediaNode;
   if (media.type === "image") {
-    mediaNode = document.createElement("img");
-    mediaNode.alt = media.name || t("image");
-    mediaNode.addEventListener("click", () => {
-      if (state.selectionMode) return;
-      openAttachmentViewer(media);
-    });
+    mediaNode = createImageNode(media);
   } else if (media.type === "video") {
     mediaNode = createVideoThumb(media);
   } else if (media.type === "audio") {
@@ -1350,19 +1363,7 @@ function renderMedia(media) {
   }
   if (mediaNode.tagName !== "BUTTON" && !mediaNode.dataset.customMedia) mediaNode.src = media.url;
   if (media.type === "image" || media.type === "video") {
-    wrapper.classList.add("media-loading");
-    const shell = document.createElement("span");
-    shell.className = "media-load-shell";
-    const loader = document.createElement("span");
-    loader.className = "media-circular-loader";
-    shell.append(mediaNode, loader);
-    wrapper.appendChild(shell);
-    const loadedTarget = media.type === "video" ? mediaNode.querySelector("video") : mediaNode;
-    const markLoaded = () => wrapper.classList.add("media-loaded");
-    loadedTarget?.addEventListener("load", markLoaded, { once: true });
-    loadedTarget?.addEventListener("loadedmetadata", markLoaded, { once: true });
-    loadedTarget?.addEventListener("loadeddata", markLoaded, { once: true });
-    if (loadedTarget?.complete || loadedTarget?.readyState >= 1) requestAnimationFrame(markLoaded);
+    bindMediaLoading(wrapper, mediaNode, media.type);
   } else {
     wrapper.appendChild(mediaNode);
   }
@@ -1370,6 +1371,70 @@ function renderMedia(media) {
   name.className = "media-name";
   name.textContent = `${media.name || t("file")} · ${formatSize(media.size)}`;
   wrapper.appendChild(name);
+  return wrapper;
+}
+
+function bindMediaLoading(wrapper, mediaNode, type) {
+  wrapper.classList.add("media-loading");
+  const shell = document.createElement("span");
+  shell.className = "media-load-shell";
+  const loader = document.createElement("span");
+  loader.className = "media-circular-loader";
+  shell.append(mediaNode, loader);
+  wrapper.appendChild(shell);
+  const loadedTarget = type === "video" ? mediaNode.querySelector("video") : mediaNode;
+  const markLoaded = () => wrapper.classList.add("media-loaded");
+  loadedTarget?.addEventListener("load", markLoaded, { once: true });
+  loadedTarget?.addEventListener("loadedmetadata", markLoaded, { once: true });
+  loadedTarget?.addEventListener("loadeddata", markLoaded, { once: true });
+  if (loadedTarget?.complete || loadedTarget?.readyState >= 1) requestAnimationFrame(markLoaded);
+}
+
+function createImageNode(media, className = "") {
+  const image = document.createElement("img");
+  image.alt = media.name || t("image");
+  if (className) image.className = className;
+  image.addEventListener("click", () => {
+    if (state.selectionMode) return;
+    openAttachmentViewer(media);
+  });
+  image.src = media.url;
+  return image;
+}
+
+function renderMediaGroup(group) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "image-group media-loading";
+  const visible = group.slice(0, 4);
+  visible.forEach((media, index) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "image-group-item";
+    item.addEventListener("click", () => {
+      if (state.selectionMode) return;
+      openAttachmentViewer(media);
+    });
+    const image = document.createElement("img");
+    image.alt = media.name || t("image");
+    image.src = media.url;
+    const markLoaded = () => {
+      item.classList.add("media-loaded");
+      if (wrapper.querySelectorAll(".image-group-item.media-loaded").length === visible.length) wrapper.classList.add("media-loaded");
+    };
+    image.addEventListener("load", markLoaded, { once: true });
+    item.appendChild(image);
+    if (image.complete) requestAnimationFrame(markLoaded);
+    if (index === 3 && group.length > 4) {
+      const more = document.createElement("span");
+      more.className = "image-group-more";
+      more.textContent = `+${group.length - 4}`;
+      item.appendChild(more);
+    }
+    wrapper.appendChild(item);
+  });
+  const loader = document.createElement("span");
+  loader.className = "media-circular-loader";
+  wrapper.appendChild(loader);
   return wrapper;
 }
 
@@ -2088,6 +2153,22 @@ async function submitMedia(caption) {
   const files = [...state.mediaFiles];
   const recipientId = currentRecipientId();
   try {
+    if (files.length > 10) throw new Error(t("maxAttachments"));
+    const imagesOnlyGroup = files.length > 1 && files.every((file) => filePreviewKind(file) === "image");
+    if (imagesOnlyGroup) {
+      const formData = new FormData();
+      files.forEach((file) => formData.append("media", file));
+      formData.append("caption", caption);
+      formData.append("recipientId", recipientId);
+      const { message } = await api("/api/upload-group", {
+        method: "POST",
+        body: formData
+      });
+      if (!message?.id) throw new Error(t("unexpectedError"));
+      addMessage(message);
+      playTone("send");
+      return;
+    }
     for (const [index, file] of files.entries()) {
       const formData = new FormData();
       formData.append("media", file);
@@ -2097,6 +2178,7 @@ async function submitMedia(caption) {
         method: "POST",
         body: formData
       });
+      if (!message?.id) throw new Error(t("unexpectedError"));
       addMessage(message);
       if (index < files.length - 1) await waitForNextMessageLoad();
     }
@@ -2449,7 +2531,14 @@ els.attachButton.addEventListener("click", () => els.mediaInput.click());
 els.recordButton?.addEventListener("click", toggleRecording);
 
 els.mediaInput.addEventListener("change", () => {
-  state.mediaFiles = [...state.mediaFiles, ...Array.from(els.mediaInput.files || [])];
+  if (state.isSending) {
+    els.mediaInput.value = "";
+    showToast(t("sendingInProgress"));
+    return;
+  }
+  const nextFiles = [...state.mediaFiles, ...Array.from(els.mediaInput.files || [])];
+  if (nextFiles.length > 10) showToast(t("maxAttachments"));
+  state.mediaFiles = nextFiles.slice(0, 10);
   els.mediaInput.value = "";
   if (!state.mediaFiles.length) {
     els.mediaPreview.classList.add("hidden");
@@ -2471,10 +2560,16 @@ els.messageInput.addEventListener("input", () => {
 els.composer.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!state.user) return showToast(t("loginFirst"));
+  if (state.isSending) return showToast(t("sendingInProgress"));
   if (state.recorder || state.fallbackRecorder) await stopRecording();
   const text = els.messageInput.value.trim();
   if (!text && !state.mediaFiles.length) return;
+  if (state.mediaFiles.length > 10) return showToast(t("maxAttachments"));
+  state.isSending = true;
   els.composer.querySelector(".send-button").disabled = true;
+  els.messageInput.disabled = true;
+  els.attachButton.disabled = true;
+  if (els.recordButton) els.recordButton.disabled = true;
   try {
     if (state.mediaFiles.length) await submitMedia(text);
     else await submitText(text);
@@ -2484,7 +2579,11 @@ els.composer.addEventListener("submit", async (event) => {
   } catch (error) {
     showToast(error.message);
   } finally {
+    state.isSending = false;
     els.composer.querySelector(".send-button").disabled = false;
+    els.messageInput.disabled = false;
+    els.attachButton.disabled = false;
+    if (els.recordButton) els.recordButton.disabled = false;
   }
 });
 
