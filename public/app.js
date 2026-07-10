@@ -281,7 +281,8 @@ Object.assign(TR.ar, {
   callUnavailable: "المكالمات متاحة في المحادثات الخاصة فقط.",
   clearCallHistory: "حذف سجل المكالمات",
   callHistoryCleared: "تم حذف سجل المكالمات.",
-  callAudioBlocked: "اضغط على نافذة الاتصال لتشغيل الصوت."
+  callAudioBlocked: "اضغط على نافذة الاتصال لتشغيل الصوت.",
+  callClosedBy: "{name} قام بإغلاق المكالمة."
 });
 Object.assign(TR.en, {
   voiceCall: "Voice call",
@@ -302,7 +303,8 @@ Object.assign(TR.en, {
   callUnavailable: "Calls are available in private chats only.",
   clearCallHistory: "Clear call history",
   callHistoryCleared: "Call history cleared.",
-  callAudioBlocked: "Tap the call window to play audio."
+  callAudioBlocked: "Tap the call window to play audio.",
+  callClosedBy: "{name} ended the call."
 });
 const translationKeys = Object.keys(TR.ar);
 Object.entries(EXTRA_TRANSLATIONS).forEach(([lang, values]) => {
@@ -745,7 +747,18 @@ function handleCallUpdate(payload) {
   renderCalls();
   if (!state.activeCall || state.activeCall.id !== call.id) return;
   els.callStatus.textContent = callStatusText(call);
-  if (["ended", "missed", "rejected"].includes(call.status)) endLocalCall(false);
+  if (["ended", "missed", "rejected"].includes(call.status)) {
+    const closedByOther = payload.actor?.id && payload.actor.id !== state.user.id;
+    const actorName = payload.actor?.name || callPeerUser(call)?.name || t("user");
+    endLocalCall(false);
+    if (closedByOther) {
+      openConfirmModal({
+        title: t("callEnded"),
+        text: t("callClosedBy").replace("{name}", actorName),
+        mode: "notification"
+      });
+    }
+  }
 }
 
 function renderCalls() {
@@ -1564,9 +1577,11 @@ function setConfirmButtons(mode = "single", message = null) {
   const messageDeleteMode = mode === "message-delete";
   const bulkDeleteMode = mode === "bulk-delete";
   const deleteChoiceMode = messageDeleteMode || bulkDeleteMode;
-  els.confirmActionButton?.classList.toggle("hidden", deleteChoiceMode);
+  const notificationMode = mode === "notification";
+  els.confirmActionButton?.classList.toggle("hidden", deleteChoiceMode || notificationMode);
   els.deleteForMeButton?.classList.toggle("hidden", !deleteChoiceMode);
   els.deleteForEveryoneButton?.classList.toggle("hidden", !deleteChoiceMode || (bulkDeleteMode ? !canDeleteSelectionForEveryone() : message?.userId !== state.user?.id));
+  if (els.cancelConfirmButton) els.cancelConfirmButton.textContent = notificationMode ? t("close") : t("cancel");
 }
 
 function openConfirmModal({ title = t("confirmDelete"), text, action, mode = "single", message = null }) {
@@ -2811,7 +2826,6 @@ function closeOverlayPanels() {
   closeConfirmModal();
   closeViewerModal();
   hideFloatingElement(els.callsModal);
-  closeCallWindowOnly();
 }
 
 els.messageOverlay.addEventListener("pointerdown", closeOverlayPanels);
