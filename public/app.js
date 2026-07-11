@@ -2894,10 +2894,22 @@ els.profileForm.addEventListener("submit", async (event) => {
 });
 
 els.logoutButton.addEventListener("click", async () => {
-  await api("/api/logout", { method: "POST", body: JSON.stringify({}) });
-  clearRememberSession();
-  setAuthenticated(null);
-  showToast(t("loggedOut"));
+  try {
+    await api("/api/logout", {
+      method: "POST",
+      body: JSON.stringify({
+        userId: state.user?.id || localStorage.getItem("vioraRememberUserId") || "",
+        rememberToken: localStorage.getItem("vioraRememberToken") || "",
+        deviceId: state.deviceId
+      })
+    });
+    clearRememberSession();
+    localStorage.removeItem("vioraOffline:currentUser");
+    setAuthenticated(null);
+    showToast(t("loggedOut"));
+  } catch (error) {
+    showToast(error.message || t("unexpectedError"));
+  }
 });
 
 els.menuButton.addEventListener("click", () => {
