@@ -550,10 +550,16 @@ async function createMessage(req, res) {
   const payload = JSON.parse((await getBody(req)).toString("utf8") || "{}");
   const text = String(payload.text || "").trim();
   const recipientId = String(payload.recipientId || "");
+  const clientId = String(payload.clientId || "").trim().slice(0, 120);
   if (!text) return json(res, 400, { error: "اكتب رسالة أولًا." });
   if (recipientId && !canMessageUser(recipientId)) return json(res, 404, { error: "هذا الحساب غير موجود." });
+  if (clientId) {
+    const existing = db.messages.find((item) => item.clientId === clientId && item.userId === auth.user.id);
+    if (existing) return json(res, 200, { message: { ...existing, mine: true } });
+  }
   const message = {
     id: crypto.randomUUID(),
+    clientId: clientId || null,
     userId: auth.user.id,
     recipientId: recipientId || null,
     conversationId: recipientId ? directConversationId(auth.user.id, recipientId) : "general",
