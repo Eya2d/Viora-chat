@@ -302,18 +302,24 @@
       </div>
     </section>
     <section class="call-window hidden" id="callWindow" aria-label="مكالمة صوتية" data-i18n-aria="voiceCall">
+      <button class="call-close-button" type="button" id="closeCallWindow" aria-label="إغلاق" data-i18n-aria="close">×</button>
       <header>
         <span class="avatar" id="callAvatar">V</span>
         <div>
           <h2 id="callTitle">مكالمة صوتية</h2>
           <p id="callStatus">جاري الاتصال...</p>
         </div>
-        <button type="button" id="closeCallWindow" aria-label="إغلاق" data-i18n-aria="close">×</button>
       </header>
+      <div class="call-control-grid" aria-hidden="true">
+        <button type="button" tabindex="-1"><ion-icon name="mic-off-outline"></ion-icon></button>
+        <button type="button" tabindex="-1"><ion-icon name="keypad-outline"></ion-icon></button>
+        <button type="button" tabindex="-1"><ion-icon name="volume-mute-outline"></ion-icon></button>
+        <button type="button" tabindex="-1"><ion-icon name="videocam-outline"></ion-icon></button>
+      </div>
       <div class="call-actions">
-        <button class="primary hidden" type="button" id="acceptCallButton" data-i18n="acceptCall">قبول</button>
-        <button class="danger-button hidden" type="button" id="rejectCallButton" data-i18n="rejectCall">رفض</button>
-        <button class="danger-button" type="button" id="endCallButton" data-i18n="endCall">إنهاء الاتصال</button>
+        <button class="call-accept hidden" type="button" id="acceptCallButton" aria-label="قبول" data-i18n-aria="acceptCall"><ion-icon name="call-outline"></ion-icon><span data-i18n="acceptCall">قبول</span></button>
+        <button class="call-decline hidden" type="button" id="rejectCallButton" aria-label="رفض" data-i18n-aria="rejectCall"><ion-icon name="call-outline"></ion-icon><span data-i18n="rejectCall">رفض</span></button>
+        <button class="call-decline" type="button" id="endCallButton" aria-label="إنهاء الاتصال" data-i18n-aria="endCall"><ion-icon name="call-outline"></ion-icon><span data-i18n="endCall">إنهاء الاتصال</span></button>
       </div>
       <audio id="remoteCallAudio" autoplay playsinline></audio>
     </section>
