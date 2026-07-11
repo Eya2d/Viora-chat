@@ -155,6 +155,14 @@ function rememberDevice(user, deviceId) {
   if (!user.deviceIds.includes(deviceId)) user.deviceIds.push(deviceId);
 }
 
+function forgetDevice(user, deviceId) {
+  if (!user || !deviceId || deviceId.length < 16) return;
+  if (Array.isArray(user.deviceIds)) {
+    user.deviceIds = user.deviceIds.filter((item) => item !== deviceId);
+  }
+  if (user.deviceId === deviceId) user.deviceId = "";
+}
+
 function getSession(req) {
   const token = parseCookies(req.headers.cookie).session;
   if (!token) return null;
@@ -869,9 +877,30 @@ function stream(req, res) {
   req.on("close", () => clients.delete(res));
 }
 
-function logout(req, res) {
+async function logout(req, res) {
   const token = parseCookies(req.headers.cookie).session;
+  const session = token ? db.sessions.find((item) => item.token === token) : null;
+  let payload = {};
+  try {
+    payload = JSON.parse((await getBody(req)).toString("utf8") || "{}");
+  } catch {
+    payload = {};
+  }
+  const userId = String(payload.userId || session?.userId || "");
+  const rememberToken = String(payload.rememberToken || "");
+  const deviceId = String(payload.deviceId || "").trim();
+  const user = db.users.find((item) => item.id === userId);
+
   if (token) db.sessions = db.sessions.filter((item) => item.token !== token);
+  if (user) {
+    const ownsSession = session?.userId === user.id;
+    const ownsRememberToken = rememberToken && user.rememberTokenHash === hashToken(rememberToken);
+    if (ownsSession || ownsRememberToken) {
+      delete user.rememberTokenHash;
+      delete user.rememberedAt;
+      forgetDevice(user, deviceId);
+    }
+  }
   saveDb();
   res.setHeader("Set-Cookie", "session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0");
   json(res, 200, { ok: true });
