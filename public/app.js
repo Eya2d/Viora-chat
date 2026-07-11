@@ -21,6 +21,8 @@ const state = {
   typingStopTimer: null,
   calls: [],
   activeCall: null,
+  localVideoStream: null,
+  cameraOn: false,
   pendingCallSignals: new Map(),
   audioContext: null,
   keepScrollBottomUntil: 0,
@@ -145,8 +147,10 @@ const els = {
   closeCallWindow: document.querySelector("#closeCallWindow"),
   acceptCallButton: document.querySelector("#acceptCallButton"),
   rejectCallButton: document.querySelector("#rejectCallButton"),
+  videocamButton: document.querySelector("#videocam"),
   endCallButton: document.querySelector("#endCallButton"),
-  remoteCallAudio: document.querySelector("#remoteCallAudio")
+  remoteCallAudio: document.querySelector("#remoteCallAudio"),
+  remoteCallVideo: document.querySelector("#remoteCallVideo")
 };
 
 const transitionTimers = new WeakMap();
@@ -547,6 +551,9 @@ function showCallWindow(user, status, incoming = false) {
   els.callTitle.textContent = user?.name || t("voiceCall");
   els.callStatus.textContent = status;
   if (els.callAvatar) setAvatar(els.callAvatar, user);
+  state.cameraOn = false;
+  updateVideoButton();
+  els.callWindow.classList.remove("has-remote-video");
   els.callWindow.classList.toggle("incoming-call", incoming);
   els.callWindow.classList.toggle("active-call", !incoming);
   els.acceptCallButton.classList.toggle("hidden", !incoming);
@@ -601,6 +608,55 @@ function playRemoteCallAudio(stream) {
   els.remoteCallAudio.play?.().catch(() => showToast(t("callAudioBlocked")));
 }
 
+function playRemoteCallVideo(stream) {
+  if (!els.remoteCallVideo || !stream) return;
+  els.remoteCallVideo.srcObject = stream;
+  els.remoteCallVideo.play?.().catch(() => {});
+  els.callWindow.classList.add("has-remote-video");
+}
+
+function updateVideoButton() {
+  if (!els.videocamButton) return;
+  els.videocamButton.classList.toggle("active", state.cameraOn);
+  els.videocamButton.innerHTML = `<ion-icon name="${state.cameraOn ? "videocam" : "videocam-outline"}"></ion-icon>`;
+  els.callWindow?.classList.toggle("local-camera-on", state.cameraOn);
+}
+
+async function renegotiateActiveCall() {
+  const active = state.activeCall;
+  const pc = active?.peerConnection;
+  if (!active?.id || !pc) return;
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await sendCallSignal(active.id, { description: pc.localDescription });
+}
+
+async function toggleCallCamera() {
+  const active = state.activeCall;
+  const pc = active?.peerConnection;
+  if (!active || !pc) return;
+  if (state.cameraOn) {
+    state.localVideoStream?.getTracks().forEach((track) => {
+      track.stop();
+      const sender = pc.getSenders().find((item) => item.track === track);
+      if (sender) pc.removeTrack(sender);
+    });
+    state.localVideoStream = null;
+    state.cameraOn = false;
+    updateVideoButton();
+    await sendCallSignal(active.id, { camera: false });
+    await renegotiateActiveCall();
+    return;
+  }
+  const videoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+  videoStream.getVideoTracks().forEach((track) => pc.addTrack(track, videoStream));
+  state.localVideoStream = videoStream;
+  state.cameraOn = true;
+  updateVideoButton();
+  await sendCallSignal(active.id, { camera: true });
+  await renegotiateActiveCall();
+}
+
 function setupPeerConnection(callId, peerId, stream) {
   const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
   stream.getTracks().forEach((track) => pc.addTrack(track, stream));
@@ -608,7 +664,8 @@ function setupPeerConnection(callId, peerId, stream) {
     if (event.candidate) sendCallSignal(callId, { candidate: event.candidate });
   };
   pc.ontrack = (event) => {
-    playRemoteCallAudio(event.streams[0]);
+    if (event.track.kind === "video") playRemoteCallVideo(event.streams[0]);
+    else playRemoteCallAudio(event.streams[0]);
   };
   pc.onconnectionstatechange = () => {
     if (!state.activeCall || state.activeCall.id !== callId) return;
@@ -623,6 +680,14 @@ function setupPeerConnection(callId, peerId, stream) {
 async function applyCallSignal(signal) {
   const active = state.activeCall;
   if (!active?.peerConnection || !signal) return false;
+  if (signal.camera === false) {
+    if (els.remoteCallVideo) {
+      els.remoteCallVideo.pause();
+      els.remoteCallVideo.srcObject = null;
+    }
+    els.callWindow?.classList.remove("has-remote-video");
+    return true;
+  }
   const pc = active.peerConnection;
   if (signal.description) {
     await pc.setRemoteDescription(signal.description);
@@ -714,10 +779,19 @@ async function endLocalCall(send = true, action = "end") {
   state.activeCall = null;
   if (active?.peerConnection) active.peerConnection.close();
   active?.localStream?.getTracks().forEach((track) => track.stop());
+  state.localVideoStream?.getTracks().forEach((track) => track.stop());
+  state.localVideoStream = null;
+  state.cameraOn = false;
+  updateVideoButton();
   if (els.remoteCallAudio) {
     els.remoteCallAudio.pause();
     els.remoteCallAudio.srcObject = null;
   }
+  if (els.remoteCallVideo) {
+    els.remoteCallVideo.pause();
+    els.remoteCallVideo.srcObject = null;
+  }
+  els.callWindow?.classList.remove("has-remote-video");
   closeCallWindowOnly();
   if (send && active?.id) {
     try {
@@ -2940,6 +3014,10 @@ els.voiceCallButton?.addEventListener("click", () => {
 });
 els.closeCallWindow?.addEventListener("click", closeCallWindowOnly);
 els.callWindow?.addEventListener("click", () => els.remoteCallAudio?.play?.().catch(() => {}));
+els.videocamButton?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleCallCamera().catch((error) => showToast(error.message || t("unexpectedError")));
+});
 els.acceptCallButton?.addEventListener("click", acceptIncomingCall);
 els.rejectCallButton?.addEventListener("click", () => endLocalCall(true, "reject"));
 els.endCallButton?.addEventListener("click", () => endLocalCall(true, "end"));
