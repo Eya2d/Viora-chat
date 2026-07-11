@@ -719,8 +719,13 @@ async function uploadMedia(req, res) {
   const file = files.find((item) => item.name === "media");
   const caption = String(fields.caption || "").trim().slice(0, 500);
   const recipientId = String(fields.recipientId || "");
+  const clientId = String(fields.clientId || "").trim().slice(0, 120);
   if (!file) return json(res, 400, { error: "اختر ملفًا للإرسال." });
   if (recipientId && !canMessageUser(recipientId)) return json(res, 404, { error: "هذا الحساب غير موجود." });
+  if (clientId) {
+    const existing = db.messages.find((item) => item.clientId === clientId && item.userId === auth.user.id);
+    if (existing) return json(res, 200, { message: { ...existing, mine: true } });
+  }
   const fileType = normalizeMime(file.type);
   if (!allowedAttachments.has(fileType)) return json(res, 400, { error: "يدعم الموقع الصور والفيديو والصوت وملفات PDF وTXT وWord فقط." });
   const storedFile = storeUploadedFile(file);
@@ -733,6 +738,7 @@ async function uploadMedia(req, res) {
         : "document";
   const message = {
     id: crypto.randomUUID(),
+    clientId: clientId || null,
     userId: auth.user.id,
     recipientId: recipientId || null,
     conversationId: recipientId ? directConversationId(auth.user.id, recipientId) : "general",
@@ -766,9 +772,14 @@ async function uploadMediaGroup(req, res) {
   const mediaFiles = files.filter((item) => item.name === "media");
   const caption = String(fields.caption || "").trim().slice(0, 500);
   const recipientId = String(fields.recipientId || "");
+  const clientId = String(fields.clientId || "").trim().slice(0, 120);
   if (!mediaFiles.length) return json(res, 400, { error: "اختر صورًا للإرسال." });
   if (mediaFiles.length > 10) return json(res, 400, { error: "لا يمكن إرسال أكثر من 10 عناصر في المرة الواحدة." });
   if (recipientId && !canMessageUser(recipientId)) return json(res, 404, { error: "هذا الحساب غير موجود." });
+  if (clientId) {
+    const existing = db.messages.find((item) => item.clientId === clientId && item.userId === auth.user.id);
+    if (existing) return json(res, 200, { message: { ...existing, mine: true } });
+  }
 
   const group = [];
   for (const file of mediaFiles) {
@@ -788,6 +799,7 @@ async function uploadMediaGroup(req, res) {
 
   const message = {
     id: crypto.randomUUID(),
+    clientId: clientId || null,
     userId: auth.user.id,
     recipientId: recipientId || null,
     conversationId: recipientId ? directConversationId(auth.user.id, recipientId) : "general",
