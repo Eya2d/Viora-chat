@@ -2014,6 +2014,40 @@ html[dir="ltr"] .context-menu {
   padding-top: 64px;
   width: max-content;
   margin: auto;
+  position: relative;
+  z-index: 1;
+  transition: opacity 180ms ease;
+}
+
+.remote-call-video {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease;
+}
+
+.has-remote-video .remote-call-video {
+  opacity: 1;
+}
+
+.has-remote-video header,
+.local-camera-on header {
+  opacity: 0;
+}
+
+.has-remote-video::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.42));
+  pointer-events: none;
 }
 
 .calls-modal header div {
@@ -2058,13 +2092,15 @@ html[dir="ltr"] .context-menu {
   align-items: end;
   gap: 28px;
   min-height: 104px;
+  position: relative;
+  z-index: 1;
 }
 
 .call-close-button {
   position: absolute;
   top: 20px;
   right: 18px;
-  z-index: 2;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2086,6 +2122,8 @@ html[dir="ltr"] .context-menu {
   gap: 22px;
   min-height: 120px;
   opacity: 0.52;
+  position: relative;
+  z-index: 1;
 }
 
 .call-control-grid button {
@@ -2097,6 +2135,11 @@ html[dir="ltr"] .context-menu {
   color: rgba(255, 255, 255, 0.7);
   background: transparent;
   font-size: 28px;
+}
+
+.call-control-grid button.active {
+  color: #fff;
+  opacity: 1;
 }
 
 .call-control-grid button:nth-child(4) {
@@ -2122,8 +2165,8 @@ html[dir="ltr"] .context-menu {
 .call-decline ion-icon {
   display: grid;
   place-items: center;
-  width: 48px;
-  height: 48px;
+  width: 34px;
+  height: 34px;
   padding: 12px;
   border-radius: 50%;
   color: #fff;
