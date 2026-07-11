@@ -302,6 +302,7 @@
       </div>
     </section>
     <section class="call-window hidden" id="callWindow" aria-label="مكالمة صوتية" data-i18n-aria="voiceCall">
+      <video class="remote-call-video" id="remoteCallVideo" autoplay playsinline></video>
       <button class="call-close-button" type="button" id="closeCallWindow" aria-label="إغلاق" data-i18n-aria="close">×</button>
       <header>
         <span class="avatar" id="callAvatar">V</span>
@@ -311,10 +312,10 @@
         </div>
       </header>
       <div class="call-control-grid" aria-hidden="true">
-        <button type="button" tabindex="-1"><ion-icon name="mic-off-outline"></ion-icon></button>
-        <button type="button" tabindex="-1"><ion-icon name="keypad-outline"></ion-icon></button>
-        <button type="button" tabindex="-1"><ion-icon name="volume-mute-outline"></ion-icon></button>
-        <button type="button" tabindex="-1"><ion-icon name="videocam-outline"></ion-icon></button>
+        <button type="button" style="opacity: 0;" tabindex="-1"><ion-icon name="mic-off-outline"></ion-icon></button>
+        <button type="button" style="opacity: 0;" tabindex="-1"><ion-icon name="keypad-outline"></ion-icon></button>
+        <button type="button" style="opacity: 0;" tabindex="-1"><ion-icon name="volume-mute-outline"></ion-icon></button>
+        <button type="button" id="videocam"><ion-icon name="videocam-outline"></ion-icon></button>
       </div>
       <div class="call-actions">
         <button class="call-accept hidden" type="button" id="acceptCallButton" aria-label="قبول" data-i18n-aria="acceptCall"><ion-icon name="call-outline"></ion-icon><span data-i18n="acceptCall">قبول</span></button>
