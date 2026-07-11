@@ -48,6 +48,8 @@ const state = {
   pendingCallSignals: new Map(),
   audioContext: null,
   keepScrollBottomUntil: 0,
+  reconnectTimer: null,
+  reconnecting: false,
   recorder: null,
   recorderStream: null,
   recorderChunks: [],
@@ -289,6 +291,7 @@ TR.en.sendingInProgress = "Wait until the current attachments finish sending.";
 TR.ar.serverNeedsRestart = "أعد تشغيل الخادم لتفعيل تحديثات إرسال الصور.";
 TR.en.serverNeedsRestart = "Restart the server to enable the new photo sending updates.";
 Object.assign(TR.ar, {
+  offline: "غير متصل",
   voiceCall: "مكالمة صوتية",
   acceptCall: "قبول",
   rejectCall: "رفض",
@@ -311,6 +314,7 @@ Object.assign(TR.ar, {
   callClosedBy: "{name} قام بإغلاق المكالمة."
 });
 Object.assign(TR.en, {
+  offline: "Offline",
   voiceCall: "Voice call",
   acceptCall: "Accept",
   rejectCall: "Reject",
@@ -494,6 +498,11 @@ function showToast(message) {
   showToast.timer = setTimeout(() => els.toast.classList.add("hidden"), 3200);
 }
 
+function updateAccountLabel() {
+  if (!state.user || !els.accountLabel) return;
+  els.accountLabel.textContent = `@${state.user.username} · ${navigator.onLine ? t("connected") : t("offline")}`;
+}
+
 function setNotice(node, message, isError = false) {
   node.textContent = message;
   node.classList.toggle("error", isError);
@@ -609,17 +618,27 @@ async function sendCallSignal(callId, signal) {
 
 async function getCallStream() {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error(t("microphonePermission"));
-  return navigator.mediaDevices.getUserMedia({
-    audio: {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-      channelCount: 1,
-      sampleRate: 48000,
-      latency: 0
+  const attempts = [
+    {
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: 1
+      },
+      video: false
     },
-    video: false
-  });
+    { audio: true, video: false }
+  ];
+  let lastError;
+  for (const constraints of attempts) {
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw new Error(lastError?.message || t("microphonePermission"));
 }
 
 function playRemoteCallAudio(stream) {
@@ -1002,7 +1021,7 @@ function setAuthenticated(user) {
     return;
   }
 
-  els.accountLabel.textContent = `@${user.username} · ${t("connected")}`;
+  updateAccountLabel();
   els.settingsName.textContent = user.name;
   els.settingsUsername.textContent = `@${user.username}`;
   setAvatar(els.settingsAvatar, user);
@@ -1278,6 +1297,62 @@ function handleBackFromChat() {
     return;
   }
   showPage("accounts");
+}
+
+function closeTopLayer() {
+  if (isShown(els.messageContextMenu)) {
+    closeMessageContextMenu();
+    return true;
+  }
+  if (isShown(els.viewerModal)) {
+    closeViewerModal();
+    return true;
+  }
+  if (isShown(els.confirmModal)) {
+    closeConfirmModal();
+    return true;
+  }
+  if (isShown(els.editModal)) {
+    closeEditModal();
+    return true;
+  }
+  if (isShown(els.shareModal)) {
+    closeShareModal();
+    return true;
+  }
+  if (isShown(els.callsModal)) {
+    hideFloatingElement(els.callsModal);
+    hideOverlay();
+    return true;
+  }
+  if (isShown(els.callWindow)) {
+    closeCallWindowOnly();
+    return true;
+  }
+  if (isShown(els.overflowMenu) || isShown(els.chatMenu) || isShown(els.composerMenu) || isShown(els.languagePanel)) {
+    closeAllMenus();
+    return true;
+  }
+  return false;
+}
+
+function handleAppBack() {
+  if (closeTopLayer()) return true;
+  if (!els.chatPage.classList.contains("hidden")) {
+    handleBackFromChat();
+    return true;
+  }
+  if (!els.settingsPage.classList.contains("hidden")) {
+    showPage("accounts");
+    return true;
+  }
+  return false;
+}
+
+function primeBackNavigation() {
+  if (!window.history?.pushState) return;
+  if (!history.state?.vioraApp) history.replaceState({ vioraApp: true }, "", location.href);
+  history.pushState({ vioraApp: true }, "", location.href);
 }
 
 function closeConversationView() {
@@ -2659,8 +2734,39 @@ function startEvents() {
   });
   state.events.onerror = () => {
     if (!els.chatPage.classList.contains("hidden")) els.statusLine.textContent = t("reconnecting");
+    if (state.events) state.events.close();
+    state.events = null;
+    scheduleReconnect(2000);
   };
   state.events.addEventListener("ready", () => updateChatHeader());
+}
+
+function stopEvents() {
+  if (state.events) state.events.close();
+  state.events = null;
+}
+
+async function reconnectToServer() {
+  if (!state.user || state.reconnecting) return;
+  state.reconnecting = true;
+  try {
+    startEvents();
+    await loadUsers();
+    if (!els.chatPage.classList.contains("hidden")) {
+      await loadMessages();
+    }
+    updateChatHeader();
+  } catch {
+    scheduleReconnect(5000);
+  } finally {
+    state.reconnecting = false;
+  }
+}
+
+function scheduleReconnect(delay = 1500) {
+  if (!state.user) return;
+  clearTimeout(state.reconnectTimer);
+  state.reconnectTimer = setTimeout(() => reconnectToServer(), delay);
 }
 
 async function submitText(text) {
@@ -3153,4 +3259,28 @@ if (window.ResizeObserver && els.messages) {
   }).observe(els.messages);
 }
 
+window.addEventListener("online", () => {
+  updateAccountLabel();
+  scheduleReconnect(200);
+});
+
+window.addEventListener("offline", () => {
+  updateAccountLabel();
+  stopEvents();
+  if (!els.chatPage.classList.contains("hidden")) updateChatHeader();
+});
+
+window.addEventListener("popstate", () => {
+  if (handleAppBack()) primeBackNavigation();
+});
+
+setInterval(() => {
+  if (!state.user || state.reconnecting) return;
+  if (!state.events || state.events.readyState === EventSource.CLOSED) {
+    scheduleReconnect(100);
+  }
+}, 7000);
+
 loadMe().catch(() => setAuthenticated(null));
+
+primeBackNavigation();
