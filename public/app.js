@@ -547,6 +547,8 @@ function showCallWindow(user, status, incoming = false) {
   els.callTitle.textContent = user?.name || t("voiceCall");
   els.callStatus.textContent = status;
   if (els.callAvatar) setAvatar(els.callAvatar, user);
+  els.callWindow.classList.toggle("incoming-call", incoming);
+  els.callWindow.classList.toggle("active-call", !incoming);
   els.acceptCallButton.classList.toggle("hidden", !incoming);
   els.rejectCallButton.classList.toggle("hidden", !incoming);
   els.endCallButton.classList.toggle("hidden", incoming);
@@ -696,6 +698,8 @@ async function acceptIncomingCall() {
     els.acceptCallButton.classList.add("hidden");
     els.rejectCallButton.classList.add("hidden");
     els.endCallButton.classList.remove("hidden");
+    els.callWindow.classList.remove("incoming-call");
+    els.callWindow.classList.add("active-call");
     els.callStatus.textContent = t("callConnected");
     setupPeerConnection(active.id, active.fromId, stream);
     await flushPendingCallSignals(active.id);
