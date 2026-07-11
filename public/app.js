@@ -1,3 +1,25 @@
+const REMOTE_ORIGIN = "https://viora-chat.onrender.com";
+const IS_LOCAL_APP = window.location.protocol === "file:";
+const RTC_CONFIGURATION = {
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:stun2.l.google.com:19302" },
+    { urls: "stun:global.stun.twilio.com:3478" }
+  ],
+  bundlePolicy: "max-bundle",
+  rtcpMuxPolicy: "require"
+};
+
+function serverUrl(path) {
+  if (!IS_LOCAL_APP || !path || !String(path).startsWith("/")) return path;
+  return `${REMOTE_ORIGIN}${path}`;
+}
+
+function mediaUrl(path) {
+  return serverUrl(path);
+}
+
 const state = {
   user: null,
   users: new Map(),
@@ -440,8 +462,8 @@ function clearRememberSession() {
 
 async function api(path, options = {}) {
   const headers = options.body instanceof FormData ? {} : { "Content-Type": "application/json" };
-  const response = await fetch(path, {
-    credentials: "same-origin",
+  const response = await fetch(serverUrl(path), {
+    credentials: IS_LOCAL_APP ? "include" : "same-origin",
     ...options,
     headers: { ...headers, ...(options.headers || {}) }
   });
@@ -658,7 +680,7 @@ async function toggleCallCamera() {
 }
 
 function setupPeerConnection(callId, peerId, stream) {
-  const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+  const pc = new RTCPeerConnection(RTC_CONFIGURATION);
   stream.getTracks().forEach((track) => pc.addTrack(track, stream));
   pc.onicecandidate = (event) => {
     if (event.candidate) sendCallSignal(callId, { candidate: event.candidate });
@@ -1704,9 +1726,9 @@ async function openAttachmentViewer(media, options = {}) {
   const activeMedia = viewerGroup ? viewerGroup[viewerIndex] : media;
   const setViewerDownloadTarget = (item) => {
     els.viewerTitle.textContent = item.name || t("viewFile");
-    els.viewerOpenLink.href = item.url;
+    els.viewerOpenLink.href = mediaUrl(item.url);
     els.viewerOpenLink.download = item.name || "attachment";
-    els.viewerOpenLink.dataset.currentUrl = item.url;
+    els.viewerOpenLink.dataset.currentUrl = mediaUrl(item.url);
   };
   setViewerDownloadTarget(activeMedia);
   els.viewerBody.textContent = "";
@@ -1725,7 +1747,7 @@ async function openAttachmentViewer(media, options = {}) {
       els.viewerBody.textContent = "";
       const image = document.createElement("img");
       image.className = `viewer-image${direction ? ` viewer-image-enter-${direction}` : ""}`;
-      image.src = current.url;
+      image.src = mediaUrl(current.url);
       image.alt = current.name || t("image");
       els.viewerBody.appendChild(image);
       if (!viewerGroup || viewerGroup.length < 2) return;
@@ -1761,7 +1783,7 @@ async function openAttachmentViewer(media, options = {}) {
   if (canUseBrowserFrameViewer() && (activeMedia.mime === "application/pdf" || activeMedia.mime === "text/plain")) {
     const frame = document.createElement("iframe");
     frame.className = "viewer-frame";
-    frame.src = activeMedia.url;
+    frame.src = mediaUrl(activeMedia.url);
     frame.title = activeMedia.name || t("file");
     els.viewerBody.appendChild(frame);
     return;
@@ -1783,7 +1805,7 @@ async function openAttachmentViewer(media, options = {}) {
     wrap.appendChild(pre);
     els.viewerBody.appendChild(wrap);
     try {
-      const response = await fetch(activeMedia.url);
+      const response = await fetch(mediaUrl(activeMedia.url));
       pre.textContent = await response.text();
     } catch {
       pre.textContent = t("textLoadFail");
@@ -1837,7 +1859,7 @@ function renderMedia(media) {
       openAttachmentViewer(media);
     });
   }
-  if (mediaNode.tagName !== "BUTTON" && !mediaNode.dataset.customMedia) mediaNode.src = media.url;
+  if (mediaNode.tagName !== "BUTTON" && !mediaNode.dataset.customMedia) mediaNode.src = mediaUrl(media.url);
   if (media.type === "image" || media.type === "video") {
     bindMediaLoading(wrapper, mediaNode, media.type);
   } else {
@@ -1874,7 +1896,7 @@ function createImageNode(media, className = "") {
     if (state.selectionMode) return;
     openAttachmentViewer(media);
   });
-  image.src = media.url;
+  image.src = mediaUrl(media.url);
   return image;
 }
 
@@ -1892,7 +1914,7 @@ function renderMediaGroup(group) {
     });
     const image = document.createElement("img");
     image.alt = media.name || t("image");
-    image.src = media.url;
+    image.src = mediaUrl(media.url);
     const markLoaded = () => {
       item.classList.add("media-loaded");
       if (wrapper.querySelectorAll(".image-group-item.media-loaded").length === visible.length) wrapper.classList.add("media-loaded");
@@ -1976,7 +1998,7 @@ function createCustomAudioPlayer(media) {
   player.dataset.customMedia = "true";
 
   const audio = document.createElement("audio");
-  audio.src = media.url;
+  audio.src = mediaUrl(media.url);
   audio.preload = "metadata";
 
   const play = document.createElement("button");
@@ -2039,7 +2061,7 @@ function createVideoThumb(media) {
   button.setAttribute("aria-label", t("viewVideo"));
 
   const video = document.createElement("video");
-  video.src = media.url;
+  video.src = mediaUrl(media.url);
   video.preload = "metadata";
   video.muted = true;
   video.playsInline = true;
@@ -2065,7 +2087,7 @@ function createCustomVideoPlayer(media) {
   player.dataset.customMedia = "true";
 
   const video = document.createElement("video");
-  video.src = media.url;
+  video.src = mediaUrl(media.url);
   video.preload = "metadata";
   video.playsInline = true;
 
@@ -2495,12 +2517,15 @@ async function renderMessagesOneByOne(messages, loadId) {
 }
 
 async function loadMe() {
-  const { user, rememberToken } = await api(`/api/me?deviceId=${encodeURIComponent(state.deviceId)}`);
-  if (user) {
-    storeRememberSession(user, rememberToken);
-    setAuthenticated(user);
-    await loadUsers();
-    return;
+  try {
+    const { user, rememberToken } = await api(`/api/me?deviceId=${encodeURIComponent(state.deviceId)}`);
+    if (user) {
+      storeRememberSession(user, rememberToken);
+      setAuthenticated(user);
+      await loadUsers();
+      return;
+    }
+  } catch {
   }
 
   const userId = localStorage.getItem("vioraRememberUserId");
@@ -2581,7 +2606,7 @@ function scheduleTyping() {
 
 function startEvents() {
   if (state.events) state.events.close();
-  state.events = new EventSource("/api/events");
+  state.events = new EventSource(serverUrl("/api/events"), IS_LOCAL_APP ? { withCredentials: true } : undefined);
   state.events.addEventListener("message", (event) => {
     const message = JSON.parse(event.data);
     if (!canSeeRealtimeMessage(message)) return;
