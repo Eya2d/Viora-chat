@@ -749,6 +749,25 @@ window.vioraPushStatus = () => api("/api/push-status");
 window.vioraPushTest = () => api("/api/push-test");
 window.vioraPushLocalStatus = () => pushLocalStatusPayload();
 
+window.vioraOpenConversationById = async (conversationId) => {
+  if (!state.user || !conversationId) return false;
+  if (conversationId === "general") {
+    await openChat("general");
+    return true;
+  }
+  if (!state.users.size) {
+    try {
+      await loadUsers();
+    } catch {}
+  }
+  const user = Array.from(state.users.values()).find((candidate) => (
+    directConversationId(state.user.id, candidate.id) === conversationId
+  ));
+  if (!user) return false;
+  await openChat("direct", user);
+  return true;
+};
+
 function showPage(name) {
   els.loadingPage.classList.toggle("hidden", name !== "loading");
   els.authPage.classList.toggle("hidden", name !== "auth");
