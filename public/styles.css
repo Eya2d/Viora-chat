@@ -2271,6 +2271,10 @@ html[dir="ltr"] .context-menu {
   }
 }
 
+.message-row-white .image-group {
+  background: #ffffff;
+}
+
 .viewer-nav {
   position: absolute;
   top: 50%;
@@ -2295,9 +2299,15 @@ html[dir="ltr"] .context-menu {
 .viewer-nav-prev {
   left: 12px;
 }
+html[dir="ltr"] .viewer-nav-prev {
+  transform: translateY(-50%) rotateZ(-180deg);
+}
 
 .viewer-nav-next {
   right: 12px;
+}
+html[dir="ltr"] .viewer-nav-next {
+  transform: translateY(-50%) rotateZ(180deg);
 }
 
 .viewer-frame {
