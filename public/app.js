@@ -691,6 +691,9 @@ window.vioraSetPushToken = (token) => {
   registerPushToken();
 };
 
+window.vioraPushStatus = () => api("/api/push-status");
+window.vioraPushTest = () => api("/api/push-test", { method: "POST" });
+
 function showPage(name) {
   els.loadingPage.classList.toggle("hidden", name !== "loading");
   els.authPage.classList.toggle("hidden", name !== "auth");
