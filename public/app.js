@@ -57,6 +57,7 @@ const state = {
   syncing: false,
   pushToken: "",
   pushTokenRegistered: "",
+  pushTokenError: "",
   pushTokenRequestTimer: null,
   pushTokenRequestAttempts: 0,
   deleteSyncTimer: null,
@@ -683,6 +684,7 @@ async function registerPushToken() {
       body: JSON.stringify({ token: state.pushToken, deviceId: state.deviceId })
     });
     state.pushTokenRegistered = state.pushToken;
+    state.pushTokenError = "";
   } catch {
     state.pushTokenRegistered = "";
   }
@@ -690,6 +692,7 @@ async function registerPushToken() {
 
 function readNativePushToken() {
   try {
+    state.pushTokenError = window.VioraAndroid?.getPushTokenError?.() || state.pushTokenError || "";
     const token = window.VioraAndroid?.getPushToken?.();
     if (token) window.vioraSetPushToken(token);
   } catch {}
@@ -703,7 +706,7 @@ function scheduleNativePushTokenSync() {
     readNativePushToken();
     registerPushToken();
     state.pushTokenRequestAttempts += 1;
-    if (state.pushTokenRegistered || state.pushTokenRequestAttempts >= 8) return;
+    if (state.pushTokenRegistered || state.pushTokenRequestAttempts >= 14) return;
     state.pushTokenRequestTimer = setTimeout(tick, state.pushTokenRequestAttempts < 3 ? 700 : 2000);
   };
   tick();
@@ -711,11 +714,23 @@ function scheduleNativePushTokenSync() {
 
 window.vioraSetPushToken = (token) => {
   state.pushToken = String(token || "").trim();
+  state.pushTokenError = "";
   registerPushToken();
+};
+
+window.vioraSetPushTokenError = (error) => {
+  state.pushTokenError = String(error || "").trim();
 };
 
 window.vioraPushStatus = () => api("/api/push-status");
 window.vioraPushTest = () => api("/api/push-test");
+window.vioraPushLocalStatus = () => ({
+  nativeBridge: Boolean(window.VioraAndroid),
+  tokenLength: state.pushToken.length,
+  registered: Boolean(state.pushTokenRegistered),
+  attempts: state.pushTokenRequestAttempts,
+  error: state.pushTokenError || ""
+});
 
 function showPage(name) {
   els.loadingPage.classList.toggle("hidden", name !== "loading");
