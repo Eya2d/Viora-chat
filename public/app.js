@@ -3880,7 +3880,6 @@ setInterval(() => {
 }, 7000);
 
 setInterval(() => {
-  if (!navigator.onLine) return;
   runPendingSyncNow();
 }, 1500);
 
