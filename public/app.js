@@ -456,9 +456,11 @@ document.addEventListener("webkitfullscreenchange", () => {
   document.body.classList.toggle("ccvve", document.webkitFullscreenElement?.classList?.contains("video-player"));
 });
 
-if (!IS_LOCAL_APP && "serviceWorker" in navigator) {
+if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js").catch(() => {});
+    navigator.serviceWorker.getRegistrations?.()
+      .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+      .catch(() => {});
   });
 }
 
@@ -2990,6 +2992,13 @@ function hasPendingSyncWork() {
 }
 
 function runPendingSyncNow() {
+  if (!state.user) {
+    const cachedUser = cachedCurrentUser();
+    if (cachedUser) {
+      setAuthenticated(cachedUser);
+      setUsers(cachedUsers());
+    }
+  }
   if (!state.user || !hasPendingSyncWork()) return;
   schedulePendingDeleteSync(0);
   schedulePendingSync(0);
