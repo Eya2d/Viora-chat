@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: viora-chat
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: DATA_DIR
+        value: /var/data
