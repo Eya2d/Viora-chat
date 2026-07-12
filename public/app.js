@@ -690,6 +690,28 @@ async function registerPushToken() {
   }
 }
 
+function pushLocalStatusPayload() {
+  return {
+    nativeBridge: Boolean(window.VioraAndroid),
+    tokenLength: state.pushToken.length,
+    registered: Boolean(state.pushTokenRegistered),
+    attempts: state.pushTokenRequestAttempts,
+    error: state.pushTokenError || "",
+    deviceId: state.deviceId,
+    userAgent: navigator.userAgent || ""
+  };
+}
+
+async function sendPushDebug() {
+  if (!state.user) return;
+  try {
+    await api("/api/push-debug", {
+      method: "POST",
+      body: JSON.stringify(pushLocalStatusPayload())
+    });
+  } catch {}
+}
+
 function readNativePushToken() {
   try {
     state.pushTokenError = window.VioraAndroid?.getPushTokenError?.() || state.pushTokenError || "";
@@ -705,6 +727,7 @@ function scheduleNativePushTokenSync() {
     if (!state.user) return;
     readNativePushToken();
     registerPushToken();
+    sendPushDebug();
     state.pushTokenRequestAttempts += 1;
     if (state.pushTokenRegistered || state.pushTokenRequestAttempts >= 14) return;
     state.pushTokenRequestTimer = setTimeout(tick, state.pushTokenRequestAttempts < 3 ? 700 : 2000);
@@ -724,13 +747,7 @@ window.vioraSetPushTokenError = (error) => {
 
 window.vioraPushStatus = () => api("/api/push-status");
 window.vioraPushTest = () => api("/api/push-test");
-window.vioraPushLocalStatus = () => ({
-  nativeBridge: Boolean(window.VioraAndroid),
-  tokenLength: state.pushToken.length,
-  registered: Boolean(state.pushTokenRegistered),
-  attempts: state.pushTokenRequestAttempts,
-  error: state.pushTokenError || ""
-});
+window.vioraPushLocalStatus = () => pushLocalStatusPayload();
 
 function showPage(name) {
   els.loadingPage.classList.toggle("hidden", name !== "loading");
