@@ -2299,14 +2299,14 @@ html[dir="ltr"] .context-menu {
 .viewer-nav-prev {
   left: 12px;
 }
-html[dir="ltr"] .viewer-nav-prev {
+html[dir="rtl"] .viewer-nav-prev {
   transform: translateY(-50%) rotateZ(-180deg);
 }
 
 .viewer-nav-next {
   right: 12px;
 }
-html[dir="ltr"] .viewer-nav-next {
+html[dir="rtl"] .viewer-nav-next {
   transform: translateY(-50%) rotateZ(180deg);
 }
 
