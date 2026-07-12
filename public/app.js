@@ -250,10 +250,10 @@ TR.ar.pendingSync = "بانتظار المزامنة";
 TR.en.pendingSync = "Waiting to sync";
 TR.ar.messageQueuedOffline = "تم حفظ الرسالة، وسيتم إرسالها عند عودة الإنترنت.";
 TR.en.messageQueuedOffline = "Message saved and will be sent when the internet returns.";
-TR.ar.savedMessagesReloading = "جاري إعادة تحميل الرسائل المحفوظة في الخلفية...";
-TR.en.savedMessagesReloading = "Reloading saved messages in the background...";
-TR.ar.savedMessagesReloaded = "تم إعادة تحميل الرسائل المحفوظة وإرسالها.";
-TR.en.savedMessagesReloaded = "Saved messages were reloaded and sent.";
+TR.ar.savedMessagesReloading = "جاري إرسال الرسائل المحفوظة في الخلفية...";
+TR.en.savedMessagesReloading = "Sending saved messages in the background...";
+TR.ar.savedMessagesReloaded = "تم إرسال الرسائل المحفوظة.";
+TR.en.savedMessagesReloaded = "Saved messages were sent.";
 TR.ar.attachmentsNeedOnline = "يجب الاتصال بالإنترنت لإرسال المرفقات.";
 TR.en.attachmentsNeedOnline = "Connect to the internet to send attachments.";
 TR.ar.newMessages = "رسائل جديدة";
@@ -1614,6 +1614,34 @@ function renderMessage(message, previousMessage = null) {
     openMessageRowContextMenu(event, message);
   });
   els.messages.appendChild(row);
+}
+
+function finalizePendingMessage(localId, messages = []) {
+  if (!localId || !messages.length || !state.messages.has(localId)) return false;
+  const firstMessage = messages[0];
+  const existing = state.messages.get(localId);
+  const merged = {
+    ...existing,
+    ...firstMessage,
+    id: firstMessage.id || localId,
+    pending: false,
+    mine: true,
+    media: existing.media || firstMessage.media || null,
+    mediaGroup: existing.mediaGroup || firstMessage.mediaGroup || null,
+    text: existing.text || firstMessage.text || ""
+  };
+  state.messages.delete(localId);
+  state.messages.set(merged.id, merged);
+  const node = els.messages.querySelector(`[data-message-id="${CSS.escape(localId)}"]`);
+  if (node) {
+    node.dataset.messageId = merged.id;
+    const time = node.querySelector("time");
+    if (time) time.innerHTML = `${formatTime(merged.createdAt)}${merged.editedAt ? ` · ${escapeHtml(t("edited"))}` : ""}${messageTickHtml(merged)}`;
+  }
+  messages.slice(1).forEach((message) => {
+    if (message?.id) state.messages.set(message.id, message);
+  });
+  return true;
 }
 
 function appendRenderedMessage(message, previousMessage = null) {
@@ -3245,13 +3273,14 @@ async function syncPendingMessages() {
           });
           messages.push(message);
         }
-        if (state.messages.has(item.localId)) state.messages.delete(item.localId);
-        for (const message of messages) {
-          if (message?.id) state.messages.set(message.id, message);
-        }
         if (messages.length) {
+          const finalized = finalizePendingMessage(item.localId, messages);
+          if (!finalized) {
+            for (const message of messages) {
+              if (message?.id) state.messages.set(message.id, message);
+            }
+          }
           cacheMessages(item.conversationId);
-          rerenderMessages({ forceBottom: true });
         }
         sentCount += 1;
       } catch (error) {
