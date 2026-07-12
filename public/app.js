@@ -57,6 +57,8 @@ const state = {
   syncing: false,
   pushToken: "",
   pushTokenRegistered: "",
+  pushTokenRequestTimer: null,
+  pushTokenRequestAttempts: 0,
   deleteSyncTimer: null,
   deleteSyncing: false,
   reconnectTimer: null,
@@ -686,6 +688,27 @@ async function registerPushToken() {
   }
 }
 
+function readNativePushToken() {
+  try {
+    const token = window.VioraAndroid?.getPushToken?.();
+    if (token) window.vioraSetPushToken(token);
+  } catch {}
+}
+
+function scheduleNativePushTokenSync() {
+  clearTimeout(state.pushTokenRequestTimer);
+  state.pushTokenRequestAttempts = 0;
+  const tick = () => {
+    if (!state.user) return;
+    readNativePushToken();
+    registerPushToken();
+    state.pushTokenRequestAttempts += 1;
+    if (state.pushTokenRegistered || state.pushTokenRequestAttempts >= 8) return;
+    state.pushTokenRequestTimer = setTimeout(tick, state.pushTokenRequestAttempts < 3 ? 700 : 2000);
+  };
+  tick();
+}
+
 window.vioraSetPushToken = (token) => {
   state.pushToken = String(token || "").trim();
   registerPushToken();
@@ -1234,6 +1257,8 @@ function closeFloatingMenus() {
 function setAuthenticated(user) {
   state.user = user;
   if (!user) {
+    clearTimeout(state.pushTokenRequestTimer);
+    state.pushTokenRequestAttempts = 0;
     state.users.clear();
     state.messages.clear();
     if (state.events) state.events.close();
@@ -1244,6 +1269,7 @@ function setAuthenticated(user) {
 
   cacheCurrentUser(user);
   registerPushToken();
+  scheduleNativePushTokenSync();
   updateAccountLabel();
   els.settingsName.textContent = user.name;
   els.settingsUsername.textContent = `@${user.username}`;
