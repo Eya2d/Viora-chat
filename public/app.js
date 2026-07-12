@@ -658,9 +658,17 @@ function showToast(message) {
   showToast.timer = setTimeout(() => els.toast.classList.add("hidden"), 3200);
 }
 
+function handleConnectionLabelChange(wasOnline, isOnlineNow) {
+  if (!wasOnline && isOnlineNow) window.vioraNetworkBack?.();
+}
+
 function updateAccountLabel() {
   if (!state.user || !els.accountLabel) return;
-  els.accountLabel.textContent = `@${state.user.username} · ${navigator.onLine ? t("connected") : t("offline")}`;
+  const wasOnline = els.accountLabel.dataset.online === "true";
+  const isOnlineNow = navigator.onLine;
+  els.accountLabel.dataset.online = isOnlineNow ? "true" : "false";
+  els.accountLabel.textContent = `@${state.user.username} · ${isOnlineNow ? t("connected") : t("offline")}`;
+  handleConnectionLabelChange(wasOnline, isOnlineNow);
 }
 
 function setNotice(node, message, isError = false) {
@@ -3009,6 +3017,20 @@ window.vioraNetworkBack = () => {
   runPendingSyncNow();
   scheduleReconnect(0);
 };
+
+function watchAccountConnectionLabel() {
+  if (!window.MutationObserver || !els.accountLabel) return;
+  let lastOnline = els.accountLabel.dataset.online === "true" || els.accountLabel.textContent.includes(t("connected"));
+  new MutationObserver(() => {
+    const text = els.accountLabel.textContent || "";
+    const isOnlineNow = text.includes(t("connected")) && !text.includes(t("offline"));
+    if (!lastOnline && isOnlineNow) runPendingSyncNow();
+    lastOnline = isOnlineNow;
+    els.accountLabel.dataset.online = isOnlineNow ? "true" : "false";
+  }).observe(els.accountLabel, { childList: true, characterData: true, subtree: true });
+}
+
+watchAccountConnectionLabel();
 
 async function ensureServerSessionForSync() {
   if (!state.user) return false;
