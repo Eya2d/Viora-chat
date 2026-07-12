@@ -692,7 +692,7 @@ window.vioraSetPushToken = (token) => {
 };
 
 window.vioraPushStatus = () => api("/api/push-status");
-window.vioraPushTest = () => api("/api/push-test", { method: "POST" });
+window.vioraPushTest = () => api("/api/push-test");
 
 function showPage(name) {
   els.loadingPage.classList.toggle("hidden", name !== "loading");
