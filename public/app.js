@@ -53,6 +53,7 @@ const state = {
   keepScrollBottomUntil: 0,
   syncTimer: null,
   syncing: false,
+  pendingSyncNotified: false,
   deleteSyncTimer: null,
   deleteSyncing: false,
   reconnectTimer: null,
@@ -249,6 +250,10 @@ TR.ar.pendingSync = "بانتظار المزامنة";
 TR.en.pendingSync = "Waiting to sync";
 TR.ar.messageQueuedOffline = "تم حفظ الرسالة، وسيتم إرسالها عند عودة الإنترنت.";
 TR.en.messageQueuedOffline = "Message saved and will be sent when the internet returns.";
+TR.ar.savedMessagesReloading = "جاري إعادة تحميل الرسائل المحفوظة في الخلفية...";
+TR.en.savedMessagesReloading = "Reloading saved messages in the background...";
+TR.ar.savedMessagesReloaded = "تم إعادة تحميل الرسائل المحفوظة وإرسالها.";
+TR.en.savedMessagesReloaded = "Saved messages were reloaded and sent.";
 TR.ar.attachmentsNeedOnline = "يجب الاتصال بالإنترنت لإرسال المرفقات.";
 TR.en.attachmentsNeedOnline = "Connect to the internet to send attachments.";
 TR.ar.newMessages = "رسائل جديدة";
@@ -3215,11 +3220,16 @@ async function syncPendingMessages() {
   if (!queue.length) return;
   state.syncing = true;
   const remaining = [];
+  let sentCount = 0;
   try {
     const hasSession = await ensureServerSessionForSync();
     if (!hasSession) {
       remaining.push(...queue);
       return;
+    }
+    if (!state.pendingSyncNotified) {
+      state.pendingSyncNotified = true;
+      showToast(t("savedMessagesReloading"));
     }
     for (let index = 0; index < queue.length; index += 1) {
       const item = queue[index];
@@ -3243,6 +3253,7 @@ async function syncPendingMessages() {
           cacheMessages(item.conversationId);
           rerenderMessages({ forceBottom: true });
         }
+        sentCount += 1;
       } catch (error) {
         remaining.push(...queue.slice(index));
         break;
@@ -3251,6 +3262,8 @@ async function syncPendingMessages() {
   } finally {
     state.syncing = false;
     savePendingQueue(remaining);
+    if (sentCount > 0) showToast(t("savedMessagesReloaded"));
+    if (!remaining.length) state.pendingSyncNotified = false;
   }
 }
 
