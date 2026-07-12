@@ -3251,9 +3251,6 @@ async function syncPendingMessages() {
   } finally {
     state.syncing = false;
     savePendingQueue(remaining);
-    if (remaining.length) {
-      schedulePendingSync(2000);
-    }
   }
 }
 
@@ -3285,7 +3282,6 @@ async function syncPendingDeletes() {
   } finally {
     state.deleteSyncing = false;
     savePendingDeleteQueue(remaining);
-    if (remaining.length) schedulePendingDeleteSync(2000);
   }
 }
 
@@ -3907,16 +3903,10 @@ window.addEventListener("popstate", () => {
 
 setInterval(() => {
   if (!state.user || state.reconnecting) return;
-  schedulePendingDeleteSync(0);
-  schedulePendingSync(0);
   if (!state.events || state.events.readyState === EventSource.CLOSED) {
     scheduleReconnect(100);
   }
 }, 7000);
-
-setInterval(() => {
-  runPendingSyncNow();
-}, 1500);
 
 loadMe().catch(() => {
   const cachedUser = cachedCurrentUser();
