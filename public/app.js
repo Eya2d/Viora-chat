@@ -27,6 +27,8 @@ const state = {
   users: new Map(),
   messages: new Map(),
   events: null,
+  realtimeMessageIds: new Set(),
+  notifiedMessageIds: new Set(),
   mediaFiles: [],
   attachmentPreviewUrls: [],
   pendingObjectUrls: [],
@@ -867,8 +869,20 @@ function messageNotificationBody(message) {
   return "لديك رسالة جديدة";
 }
 
+function rememberLimited(set, value, limit = 600) {
+  if (!value) return false;
+  if (set.has(value)) return false;
+  set.add(value);
+  if (set.size > limit) {
+    const first = set.values().next().value;
+    set.delete(first);
+  }
+  return true;
+}
+
 async function notifyIncomingMessage(message) {
   if (!message || message.userId === state.user?.id) return;
+  if (!rememberLimited(state.notifiedMessageIds, message.id)) return;
   const title = message.author || "Viora Chat";
   const body = messageNotificationBody(message).slice(0, 160);
   try {
@@ -3118,6 +3132,7 @@ function startEvents() {
   state.events.addEventListener("message", (event) => {
     const message = JSON.parse(event.data);
     if (!canSeeRealtimeMessage(message)) return;
+    if (!rememberLimited(state.realtimeMessageIds, message.id)) return;
     const mine = message.userId === state.user?.id;
     const conversationId = messageConversationId(message);
     if (isChatPageVisible() && messageBelongsToActiveChat(message)) {
