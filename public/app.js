@@ -1,5 +1,7 @@
 const REMOTE_ORIGIN = "https://viora-chat.onrender.com";
 const IS_LOCAL_APP = window.location.protocol === "file:";
+const PENDING_MEDIA_DB = "viora-pending-media";
+const PENDING_MEDIA_STORE = "files";
 const RTC_CONFIGURATION = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
@@ -27,6 +29,7 @@ const state = {
   events: null,
   mediaFiles: [],
   attachmentPreviewUrls: [],
+  pendingObjectUrls: [],
   messageLoadId: 0,
   isSending: false,
   activeChat: { type: "general", user: null },
@@ -48,6 +51,8 @@ const state = {
   pendingCallSignals: new Map(),
   audioContext: null,
   keepScrollBottomUntil: 0,
+  syncTimer: null,
+  syncing: false,
   reconnectTimer: null,
   reconnecting: false,
   recorder: null,
@@ -238,6 +243,12 @@ TR.ar.delivered = "تم التسليم";
 TR.en.delivered = "Delivered";
 TR.ar.read = "تمت القراءة";
 TR.en.read = "Read";
+TR.ar.pendingSync = "بانتظار المزامنة";
+TR.en.pendingSync = "Waiting to sync";
+TR.ar.messageQueuedOffline = "تم حفظ الرسالة، وسيتم إرسالها عند عودة الإنترنت.";
+TR.en.messageQueuedOffline = "Message saved and will be sent when the internet returns.";
+TR.ar.attachmentsNeedOnline = "يجب الاتصال بالإنترنت لإرسال المرفقات.";
+TR.en.attachmentsNeedOnline = "Connect to the internet to send attachments.";
 TR.ar.newMessages = "رسائل جديدة";
 TR.en.newMessages = "new messages";
 TR.ar.recording = "جاري التسجيل...";
@@ -443,6 +454,12 @@ document.addEventListener("webkitfullscreenchange", () => {
   document.body.classList.toggle("ccvve", document.webkitFullscreenElement?.classList?.contains("video-player"));
 });
 
+if (!IS_LOCAL_APP && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+}
+
 function getDeviceId() {
   const existing = localStorage.getItem("vioraDeviceId");
   if (existing) return existing;
@@ -462,6 +479,117 @@ function storeRememberSession(user, rememberToken) {
 function clearRememberSession() {
   localStorage.removeItem("vioraRememberUserId");
   localStorage.removeItem("vioraRememberToken");
+}
+
+function safeJsonParse(value, fallback) {
+  try {
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function cacheKey(name, userId = state.user?.id || "guest") {
+  return `vioraOffline:${userId}:${name}`;
+}
+
+function cachedCurrentUser() {
+  return safeJsonParse(localStorage.getItem("vioraOffline:currentUser"), null);
+}
+
+function cacheCurrentUser(user) {
+  if (!user) return;
+  localStorage.setItem("vioraOffline:currentUser", JSON.stringify(user));
+}
+
+function cacheUsers() {
+  if (!state.user) return;
+  localStorage.setItem(cacheKey("users"), JSON.stringify(Array.from(state.users.values())));
+}
+
+function cachedUsers() {
+  return safeJsonParse(localStorage.getItem(cacheKey("users")), []);
+}
+
+function cacheMessages(conversationId = conversationIdFor()) {
+  if (!state.user || !conversationId) return;
+  const messages = Array.from(state.messages.values())
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+    .slice(-300);
+  localStorage.setItem(cacheKey(`messages:${conversationId}`), JSON.stringify(messages));
+}
+
+function cachedMessages(conversationId = conversationIdFor()) {
+  return safeJsonParse(localStorage.getItem(cacheKey(`messages:${conversationId}`)), []);
+}
+
+function pendingQueue() {
+  return safeJsonParse(localStorage.getItem(cacheKey("pending")), []);
+}
+
+function savePendingQueue(queue) {
+  if (!state.user) return;
+  localStorage.setItem(cacheKey("pending"), JSON.stringify(queue));
+}
+
+function openPendingMediaDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(PENDING_MEDIA_DB, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(PENDING_MEDIA_STORE)) db.createObjectStore(PENDING_MEDIA_STORE, { keyPath: "id" });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("IndexedDB error"));
+  });
+}
+
+async function pendingMediaStore(mode, callback) {
+  const db = await openPendingMediaDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(PENDING_MEDIA_STORE, mode);
+    const store = transaction.objectStore(PENDING_MEDIA_STORE);
+    const result = callback(store);
+    transaction.oncomplete = () => {
+      db.close();
+      resolve(result?.result);
+    };
+    transaction.onerror = () => {
+      db.close();
+      reject(transaction.error || new Error("IndexedDB error"));
+    };
+  });
+}
+
+function pendingFileId(localId, index) {
+  return `${state.user?.id || "guest"}:${localId}:${index}`;
+}
+
+async function savePendingFile(id, file) {
+  await pendingMediaStore("readwrite", (store) => store.put({
+    id,
+    blob: file,
+    name: file.name || "attachment",
+    type: file.type || "application/octet-stream",
+    size: file.size || 0
+  }));
+}
+
+async function getPendingFile(id) {
+  const record = await pendingMediaStore("readonly", (store) => store.get(id));
+  if (!record?.blob) return null;
+  return new File([record.blob], record.name || "attachment", { type: record.type || record.blob.type || "application/octet-stream" });
+}
+
+async function deletePendingFiles(fileIds = []) {
+  if (!fileIds.length) return;
+  await pendingMediaStore("readwrite", (store) => {
+    fileIds.forEach((id) => store.delete(id));
+  });
+}
+
+function isOfflineError(error) {
+  return error instanceof TypeError || !navigator.onLine || /Failed to fetch|NetworkError|Load failed/i.test(error?.message || "");
 }
 
 async function api(path, options = {}) {
@@ -1021,6 +1149,7 @@ function setAuthenticated(user) {
     return;
   }
 
+  cacheCurrentUser(user);
   updateAccountLabel();
   els.settingsName.textContent = user.name;
   els.settingsUsername.textContent = `@${user.username}`;
@@ -1053,6 +1182,7 @@ function switchAuthTab(tab) {
 function setUsers(users) {
   state.users.clear();
   users.forEach((user) => state.users.set(user.id, user));
+  cacheUsers();
   renderUsers();
 }
 
@@ -1069,6 +1199,7 @@ function addOrUpdateUser(user) {
     state.activeChat.user = user;
     updateChatHeader();
   }
+  cacheUsers();
   renderUsers();
 }
 
@@ -1187,6 +1318,7 @@ function addMessage(message) {
   const previousMessages = Array.from(state.messages.values()).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
   const previousMessage = previousMessages[previousMessages.length - 1] || null;
   state.messages.set(message.id, message);
+  cacheMessages();
   if (previousMessage && new Date(previousMessage.createdAt) > new Date(message.createdAt)) {
     rerenderMessages();
     return;
@@ -1198,6 +1330,7 @@ function upsertMessage(message) {
   if (!message?.id) return;
   if (!messageBelongsToActiveChat(message)) return;
   state.messages.set(message.id, message);
+  cacheMessages();
   rerenderMessages();
 }
 
@@ -1207,6 +1340,7 @@ function updateMessageStatus(payload) {
   message.deliveredAt = payload.deliveredAt || message.deliveredAt || null;
   message.readAt = payload.readAt || message.readAt || null;
   state.messages.set(message.id, message);
+  cacheMessages();
   rerenderMessages();
 }
 
@@ -1223,6 +1357,7 @@ function shouldShowMessageTail(message, previousMessage) {
 
 function messageTickHtml(message) {
   if (!(message.mine || message.userId === state.user?.id)) return "";
+  if (message.pending) return ` <span class="ticks pending" title="${escapeHtml(t("pendingSync"))}">✓</span>`;
   const status = message.readAt ? "read" : message.deliveredAt ? "delivered" : "sent";
   const icon = status === "sent" ? "✓" : "✓✓";
   return ` <span class="ticks ${status}" title="${escapeHtml(t(status))}">${icon}</span>`;
@@ -1534,6 +1669,7 @@ function removeMessage(messageId) {
   state.messages.delete(messageId);
   state.selectedMessageIds.delete(messageId);
   if (state.selectedMessageIds.size === 0) state.selectionMode = false;
+  cacheMessages();
   rerenderMessages();
 }
 
@@ -1541,6 +1677,7 @@ function clearActiveMessages() {
   state.messages.clear();
   state.selectionMode = false;
   state.selectedMessageIds.clear();
+  cacheMessages();
   rerenderMessages({ forceBottom: true });
 }
 
@@ -2598,9 +2735,16 @@ async function loadMe() {
       storeRememberSession(user, rememberToken);
       setAuthenticated(user);
       await loadUsers();
+      syncPendingMessages();
       return;
     }
-  } catch {
+  } catch (error) {
+    const cachedUser = cachedCurrentUser();
+    if (isOfflineError(error) && cachedUser) {
+      setAuthenticated(cachedUser);
+      setUsers(cachedUsers());
+      return;
+    }
   }
 
   const userId = localStorage.getItem("vioraRememberUserId");
@@ -2614,6 +2758,7 @@ async function loadMe() {
       });
       setAuthenticated(remembered.user);
       await loadUsers();
+      syncPendingMessages();
       return;
     } catch {
       clearRememberSession();
@@ -2628,22 +2773,48 @@ async function loadMe() {
     storeRememberSession(deviceSession.user, deviceSession.rememberToken);
     setAuthenticated(deviceSession.user);
     await loadUsers();
+    syncPendingMessages();
   } catch {
+    const cachedUser = cachedCurrentUser();
+    if (cachedUser) {
+      setAuthenticated(cachedUser);
+      setUsers(cachedUsers());
+      return;
+    }
     setAuthenticated(null);
     setNotice(els.authNotice, t("noSavedSession"), true);
   }
 }
 
 async function loadUsers() {
-  const { users } = await api("/api/users");
-  setUsers(users);
+  try {
+    const { users } = await api("/api/users");
+    setUsers(users);
+  } catch (error) {
+    const users = cachedUsers();
+    if (!isOfflineError(error) || !users.length) throw error;
+    setUsers(users);
+  }
 }
 
 async function loadMessages() {
   const loadId = ++state.messageLoadId;
   const recipientId = currentRecipientId();
   const path = recipientId ? `/api/messages?with=${encodeURIComponent(recipientId)}` : "/api/messages";
-  const { messages } = await api(path);
+  const conversationId = conversationIdFor();
+  let messages = [];
+  try {
+    ({ messages } = await api(path));
+  } catch (error) {
+    if (!isOfflineError(error)) throw error;
+    messages = cachedMessages(conversationId);
+  }
+  const pendingMessages = await pendingMessagesForConversation(conversationId);
+  if (pendingMessages.length) {
+    const merged = new Map(messages.map((message) => [message.id, message]));
+    pendingMessages.forEach((message) => merged.set(message.id, message));
+    messages = Array.from(merged.values());
+  }
   if (loadId !== state.messageLoadId) return;
   els.messages.textContent = "";
   state.messages.clear();
@@ -2651,8 +2822,9 @@ async function loadMessages() {
   state.selectedMessageIds.clear();
   const completed = await renderMessagesOneByOne(messages, loadId);
   if (!completed) return;
+  cacheMessages(conversationId);
   if (state.pendingClearChat?.conversationId === conversationIdFor()) renderPendingClearChatNotice(false);
-  markActiveChatRead();
+  if (navigator.onLine) markActiveChatRead();
 }
 
 function markActiveChatRead() {
@@ -2681,6 +2853,7 @@ function scheduleTyping() {
 
 function startEvents() {
   if (state.events) state.events.close();
+  if (!navigator.onLine) return;
   state.events = new EventSource(serverUrl("/api/events"), IS_LOCAL_APP ? { withCredentials: true } : undefined);
   state.events.addEventListener("message", (event) => {
     const message = JSON.parse(event.data);
@@ -2752,6 +2925,7 @@ async function reconnectToServer() {
   try {
     startEvents();
     await loadUsers();
+    syncPendingMessages();
     if (!els.chatPage.classList.contains("hidden")) {
       await loadMessages();
     }
@@ -2769,14 +2943,245 @@ function scheduleReconnect(delay = 1500) {
   state.reconnectTimer = setTimeout(() => reconnectToServer(), delay);
 }
 
+function createPendingTextMessage(text, recipientId = "", options = {}) {
+  const createdAt = options.createdAt || new Date().toISOString();
+  const conversationId = recipientId ? directConversationId(state.user.id, recipientId) : "general";
+  return {
+    id: options.localId || `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    userId: state.user.id,
+    recipientId: recipientId || null,
+    conversationId,
+    author: state.user.name,
+    username: state.user.username,
+    avatar: state.user.avatar || "",
+    text,
+    media: null,
+    mediaGroup: null,
+    createdAt,
+    deliveredAt: null,
+    readAt: null,
+    mine: true,
+    pending: true
+  };
+}
+
+function mediaFromPendingFile(file, url) {
+  const kind = filePreviewKind(file);
+  const mediaType = kind === "image" || kind === "video" || kind === "audio" ? kind : "document";
+  return {
+    type: mediaType,
+    mime: file.type || "application/octet-stream",
+    name: file.name || "attachment",
+    url,
+    size: file.size || 0,
+    local: true
+  };
+}
+
+function createPendingMediaMessage(files, caption = "", recipientId = "", localId = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`, options = {}) {
+  const createdAt = options.createdAt || new Date().toISOString();
+  const conversationId = recipientId ? directConversationId(state.user.id, recipientId) : "general";
+  const urls = files.map((file) => URL.createObjectURL(file));
+  state.pendingObjectUrls.push(...urls);
+  const mediaItems = files.map((file, index) => mediaFromPendingFile(file, urls[index]));
+  const imagesOnlyGroup = files.length > 1 && files.every((file) => filePreviewKind(file) === "image");
+  return {
+    id: localId,
+    userId: state.user.id,
+    recipientId: recipientId || null,
+    conversationId,
+    author: state.user.name,
+    username: state.user.username,
+    avatar: state.user.avatar || "",
+    text: String(caption || "").trim(),
+    media: imagesOnlyGroup ? null : mediaItems[0] || null,
+    mediaGroup: imagesOnlyGroup ? mediaItems : null,
+    createdAt,
+    deliveredAt: null,
+    readAt: null,
+    mine: true,
+    pending: true
+  };
+}
+
+async function pendingMessagesForConversation(conversationId) {
+  if (!state.user) return [];
+  const messages = [];
+  for (const item of pendingQueue()) {
+    if (item.conversationId !== conversationId) continue;
+    if (item.kind === "media") {
+      const files = [];
+      for (const fileId of item.fileIds || []) {
+        const file = await getPendingFile(fileId).catch(() => null);
+        if (file) files.push(file);
+      }
+      if (!files.length) continue;
+      messages.push(createPendingMediaMessage(files, item.caption || "", item.recipientId || "", item.localId, { createdAt: item.createdAt }));
+    } else {
+      messages.push(createPendingTextMessage(item.text || "", item.recipientId || "", {
+        localId: item.localId,
+        createdAt: item.createdAt
+      }));
+    }
+  }
+  return messages;
+}
+
+async function uploadPendingMediaItem(item) {
+  const files = [];
+  for (const fileId of item.fileIds || []) {
+    const file = await getPendingFile(fileId);
+    if (!file) throw new Error(t("unexpectedError"));
+    files.push(file);
+  }
+  if (!files.length) throw new Error(t("unexpectedError"));
+  const imagesOnly = files.every((file) => filePreviewKind(file) === "image");
+  const imagesOnlyGroup = files.length > 1 && imagesOnly;
+  const uploadedMessages = [];
+  if (imagesOnlyGroup) {
+    const formData = new FormData();
+    files.forEach((file) => formData.append("media", file));
+    formData.append("caption", item.caption || "");
+    formData.append("recipientId", item.recipientId || "");
+    formData.append("clientId", item.localId || "");
+    const { message } = await api("/api/upload-group", { method: "POST", body: formData });
+    if (!message?.id) throw new Error(t("unexpectedError"));
+    uploadedMessages.push(message);
+    return uploadedMessages;
+  }
+  for (const [index, file] of files.entries()) {
+    const formData = new FormData();
+    formData.append("media", file);
+    formData.append("caption", imagesOnly && index === 0 ? item.caption || "" : "");
+    formData.append("recipientId", item.recipientId || "");
+    formData.append("clientId", `${item.localId || "pending"}:${index}`);
+    const { message } = await api("/api/upload", { method: "POST", body: formData });
+    if (!message?.id) throw new Error(t("unexpectedError"));
+    uploadedMessages.push(message);
+    if (index < files.length - 1) await waitForNextMessageLoad();
+  }
+  if (!imagesOnly && item.caption) {
+    await waitForNextMessageLoad();
+    const { message } = await api("/api/messages", {
+      method: "POST",
+      body: JSON.stringify({ text: item.caption, recipientId: item.recipientId || "", clientId: `${item.localId || "pending"}:caption` })
+    });
+    uploadedMessages.push(message);
+  }
+  return uploadedMessages;
+}
+
+async function syncPendingMessages() {
+  if (!state.user || state.syncing) return;
+  const queue = pendingQueue();
+  if (!queue.length) return;
+  state.syncing = true;
+  const remaining = [];
+  try {
+    for (let index = 0; index < queue.length; index += 1) {
+      const item = queue[index];
+      try {
+        const messages = [];
+        if (item.kind === "media") {
+          messages.push(...await uploadPendingMediaItem(item));
+          await deletePendingFiles(item.fileIds);
+        } else {
+          const { message } = await api("/api/messages", {
+            method: "POST",
+            body: JSON.stringify({ text: item.text, recipientId: item.recipientId || "", clientId: item.localId })
+          });
+          messages.push(message);
+        }
+        if (state.messages.has(item.localId)) state.messages.delete(item.localId);
+        for (const message of messages) {
+          if (message?.id) state.messages.set(message.id, message);
+        }
+        if (messages.length) {
+          cacheMessages(item.conversationId);
+          rerenderMessages({ forceBottom: true });
+        }
+      } catch (error) {
+        remaining.push(...queue.slice(index));
+        break;
+      }
+    }
+  } finally {
+    state.syncing = false;
+    savePendingQueue(remaining);
+    if (remaining.length) {
+      clearTimeout(state.syncTimer);
+      state.syncTimer = setTimeout(syncPendingMessages, 5000);
+    }
+  }
+}
+
+function queuePendingTextMessage(text, recipientId = currentRecipientId()) {
+  const message = createPendingTextMessage(text, recipientId);
+  const queue = pendingQueue();
+  queue.push({
+    kind: "text",
+    localId: message.id,
+    text,
+    recipientId: message.recipientId || "",
+    conversationId: message.conversationId,
+    createdAt: message.createdAt
+  });
+  savePendingQueue(queue);
+  addMessage(message);
+  showToast(t("messageQueuedOffline"));
+  clearTimeout(state.syncTimer);
+  state.syncTimer = setTimeout(syncPendingMessages, 1200);
+  return message;
+}
+
+async function queuePendingMediaMessage(files, caption = "", recipientId = currentRecipientId()) {
+  if (!window.indexedDB) throw new Error(t("attachmentsNeedOnline"));
+  if (files.length > 10) throw new Error(t("maxAttachments"));
+  const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const message = createPendingMediaMessage(files, caption, recipientId, localId);
+  const fileIds = [];
+  for (const [index, file] of files.entries()) {
+    const id = pendingFileId(localId, index);
+    await savePendingFile(id, file);
+    fileIds.push(id);
+  }
+  const queue = pendingQueue();
+  queue.push({
+    kind: "media",
+    localId,
+    caption: String(caption || "").trim(),
+    recipientId: message.recipientId || "",
+    conversationId: message.conversationId,
+    fileIds,
+    createdAt: message.createdAt
+  });
+  savePendingQueue(queue);
+  addMessage(message);
+  showToast(t("messageQueuedOffline"));
+  clearTimeout(state.syncTimer);
+  state.syncTimer = setTimeout(syncPendingMessages, 1200);
+  return message;
+}
+
 async function submitText(text) {
   sendTyping(false, "typing");
-  const { message } = await api("/api/messages", {
-    method: "POST",
-    body: JSON.stringify({ text, recipientId: currentRecipientId() })
-  });
-  addMessage(message);
-  playTone("send");
+  if (!navigator.onLine) {
+    queuePendingTextMessage(text);
+    playTone("send");
+    return;
+  }
+  try {
+    const { message } = await api("/api/messages", {
+      method: "POST",
+      body: JSON.stringify({ text, recipientId: currentRecipientId() })
+    });
+    addMessage(message);
+    playTone("send");
+  } catch (error) {
+    if (!isOfflineError(error)) throw error;
+    queuePendingTextMessage(text);
+    playTone("send");
+  }
 }
 
 async function submitMedia(caption) {
@@ -2784,7 +3189,13 @@ async function submitMedia(caption) {
   const files = [...state.mediaFiles];
   const recipientId = currentRecipientId();
   const captionText = String(caption || "").trim();
+  let uploadedAny = false;
   try {
+    if (!navigator.onLine) {
+      await queuePendingMediaMessage(files, captionText, recipientId);
+      playTone("send");
+      return;
+    }
     if (files.length > 10) throw new Error(t("maxAttachments"));
     const imagesOnly = files.every((file) => filePreviewKind(file) === "image");
     const imagesOnlyGroup = files.length > 1 && imagesOnly;
@@ -2798,6 +3209,7 @@ async function submitMedia(caption) {
         body: formData
       });
       if (!message?.id) throw new Error(t("unexpectedError"));
+      uploadedAny = true;
       addMessage(message);
       playTone("send");
       return;
@@ -2812,6 +3224,7 @@ async function submitMedia(caption) {
         body: formData
       });
       if (!message?.id) throw new Error(t("unexpectedError"));
+      uploadedAny = true;
       addMessage(message);
       if (index < files.length - 1) await waitForNextMessageLoad();
     }
@@ -2821,6 +3234,10 @@ async function submitMedia(caption) {
     } else if (files.length) {
       playTone("send");
     }
+  } catch (error) {
+    if (!isOfflineError(error) || uploadedAny) throw error;
+    await queuePendingMediaMessage(files, captionText, recipientId);
+    playTone("send");
   } finally {
     sendTyping(false, "upload");
   }
@@ -3273,6 +3690,7 @@ if (window.ResizeObserver && els.messages) {
 
 window.addEventListener("online", () => {
   updateAccountLabel();
+  syncPendingMessages();
   scheduleReconnect(200);
 });
 
@@ -3288,11 +3706,20 @@ window.addEventListener("popstate", () => {
 
 setInterval(() => {
   if (!state.user || state.reconnecting) return;
+  syncPendingMessages();
   if (!state.events || state.events.readyState === EventSource.CLOSED) {
     scheduleReconnect(100);
   }
 }, 7000);
 
-loadMe().catch(() => setAuthenticated(null));
+loadMe().catch(() => {
+  const cachedUser = cachedCurrentUser();
+  if (cachedUser) {
+    setAuthenticated(cachedUser);
+    setUsers(cachedUsers());
+  } else {
+    setAuthenticated(null);
+  }
+});
 
 primeBackNavigation();
