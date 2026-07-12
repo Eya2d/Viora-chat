@@ -838,6 +838,34 @@ function playTone(type) {
   }
 }
 
+function messageNotificationBody(message) {
+  if (message.text) return message.text;
+  if (Array.isArray(message.mediaGroup) && message.mediaGroup.length) return `أرسل ${message.mediaGroup.length} صور`;
+  if (message.media?.type === "image") return "أرسل صورة";
+  if (message.media?.type === "video") return "أرسل فيديو";
+  if (message.media?.type === "audio") return "أرسل مقطعًا صوتيًا";
+  if (message.media) return "أرسل ملفًا";
+  return "لديك رسالة جديدة";
+}
+
+async function notifyIncomingMessage(message) {
+  if (!message || message.userId === state.user?.id) return;
+  const title = message.author || "Viora Chat";
+  const body = messageNotificationBody(message).slice(0, 160);
+  try {
+    if (window.VioraDesktop?.notify) {
+      const visible = await window.VioraDesktop.isVisible?.();
+      if (!visible) await window.VioraDesktop.notify({ title, body, conversationId: messageConversationId(message) });
+      return;
+    }
+  } catch {}
+  if (!("Notification" in window) || document.visibilityState === "visible") return;
+  try {
+    if (Notification.permission === "default") await Notification.requestPermission();
+    if (Notification.permission === "granted") new Notification(title, { body, icon: "/icon.png" });
+  } catch {}
+}
+
 function callPeerUser(call) {
   if (!call || !state.user) return null;
   if (call.otherUser) return call.otherUser;
@@ -3077,10 +3105,12 @@ function startEvents() {
       addMessage({ ...message, mine });
       if (!mine) markActiveChatRead();
       if (!mine) playTone("receive");
+      if (!mine) notifyIncomingMessage(message);
     } else if (!mine) {
       state.unread.set(conversationId, (state.unread.get(conversationId) || 0) + 1);
       renderUsers();
       playTone("receive");
+      notifyIncomingMessage(message);
     }
   });
   state.events.addEventListener("messageUpdate", (event) => {
