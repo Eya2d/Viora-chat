@@ -59,6 +59,14 @@ const allowedAttachments = new Set([
 
 let db = { users: [], sessions: [], messages: [], calls: [] };
 const clients = new Set();
+const pushDiagnostics = {
+  configured: false,
+  lastSetupError: "",
+  lastSendAt: "",
+  lastSendSuccess: 0,
+  lastSendFailed: 0,
+  lastSendError: ""
+};
 
 function ensureStorage() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -221,19 +229,28 @@ function initPushNotifications() {
   const rawBase64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
   if (!rawJson && !rawBase64) {
     firebaseAdmin = false;
+    pushDiagnostics.configured = false;
+    pushDiagnostics.lastSetupError = "Missing FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_BASE64";
     return firebaseAdmin;
   }
   try {
     const admin = require("firebase-admin");
     const serviceAccount = JSON.parse(rawJson || Buffer.from(rawBase64, "base64").toString("utf8"));
+    if (serviceAccount.private_key) {
+      serviceAccount.private_key = String(serviceAccount.private_key).replace(/\\n/g, "\n");
+    }
     if (!admin.apps.length) {
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount)
       });
     }
     firebaseAdmin = admin;
+    pushDiagnostics.configured = true;
+    pushDiagnostics.lastSetupError = "";
   } catch (error) {
     console.error("Firebase push setup failed:", error.message);
+    pushDiagnostics.configured = false;
+    pushDiagnostics.lastSetupError = error.message;
     firebaseAdmin = false;
   }
   return firebaseAdmin;
@@ -261,12 +278,36 @@ async function registerPushToken(req, res) {
   const payload = JSON.parse((await getBody(req)).toString("utf8") || "{}");
   const token = normalizePushToken(payload.token);
   const deviceId = String(payload.deviceId || "").trim().slice(0, 120);
+  auth.user.pushDebug = {
+    ...(auth.user.pushDebug || {}),
+    deviceId,
+    tokenLength: token.length,
+    lastTokenRequestAt: new Date().toISOString()
+  };
   if (token.length < 20) return json(res, 400, { error: "تعذر تفعيل إشعارات هذا الجهاز." });
   removePushToken(token);
   auth.user.pushTokens = Array.isArray(auth.user.pushTokens) ? auth.user.pushTokens : [];
   auth.user.pushTokens.push({ token, deviceId, updatedAt: new Date().toISOString() });
   saveDb();
   json(res, 200, { ok: true, tokenCount: auth.user.pushTokens.length, pushConfigured: Boolean(initPushNotifications()) });
+}
+
+async function savePushDebug(req, res) {
+  const auth = requireAuth(req, res);
+  if (!auth) return;
+  const payload = JSON.parse((await getBody(req)).toString("utf8") || "{}");
+  auth.user.pushDebug = {
+    nativeBridge: Boolean(payload.nativeBridge),
+    tokenLength: Number(payload.tokenLength || 0),
+    registered: Boolean(payload.registered),
+    attempts: Number(payload.attempts || 0),
+    error: String(payload.error || "").slice(0, 500),
+    deviceId: String(payload.deviceId || "").slice(0, 120),
+    userAgent: String(payload.userAgent || "").slice(0, 220),
+    updatedAt: new Date().toISOString()
+  };
+  saveDb();
+  json(res, 200, { ok: true, pushDebug: auth.user.pushDebug });
 }
 
 function messageNotificationText(message) {
@@ -314,38 +355,57 @@ async function sendPushForMessage(message) {
   };
   for (let index = 0; index < tokens.length; index += 500) {
     const batch = tokens.slice(index, index + 500);
-    const result = await admin.messaging().sendEachForMulticast({
-      tokens: batch,
-      notification: { title, body },
-      data,
-      android: {
-        priority: "high",
-        notification: {
-          channelId: "viora_messages",
-          sound: "default"
+    try {
+      const result = await admin.messaging().sendEachForMulticast({
+        tokens: batch,
+        notification: { title, body },
+        data,
+        android: {
+          priority: "high",
+          notification: {
+            channelId: "viora_messages",
+            sound: "default"
+          }
         }
-      }
-    });
-    const invalidTokens = [];
-    result.responses.forEach((response, responseIndex) => {
-      const code = response.error?.code || "";
-      if (code === "messaging/registration-token-not-registered" || code === "messaging/invalid-registration-token") {
-        invalidTokens.push(batch[responseIndex]);
-      }
-    });
-    invalidTokens.forEach(removePushToken);
-    if (invalidTokens.length) saveDb();
-    console.log("Push sent:", { success: result.successCount, failed: result.failureCount });
+      });
+      const invalidTokens = [];
+      result.responses.forEach((response, responseIndex) => {
+        const code = response.error?.code || "";
+        if (code === "messaging/registration-token-not-registered" || code === "messaging/invalid-registration-token") {
+          invalidTokens.push(batch[responseIndex]);
+        }
+      });
+      invalidTokens.forEach(removePushToken);
+      if (invalidTokens.length) saveDb();
+      pushDiagnostics.lastSendAt = new Date().toISOString();
+      pushDiagnostics.lastSendSuccess = result.successCount;
+      pushDiagnostics.lastSendFailed = result.failureCount;
+      pushDiagnostics.lastSendError = result.responses.find((response) => response.error)?.error?.message || "";
+      console.log("Push sent:", { success: result.successCount, failed: result.failureCount, error: pushDiagnostics.lastSendError });
+    } catch (error) {
+      pushDiagnostics.lastSendAt = new Date().toISOString();
+      pushDiagnostics.lastSendSuccess = 0;
+      pushDiagnostics.lastSendFailed = batch.length;
+      pushDiagnostics.lastSendError = error.message;
+      throw error;
+    }
   }
 }
 
 function pushStatusForUser(user) {
   return {
+    user: {
+      id: user.id,
+      username: user.username,
+      name: user.name
+    },
     configured: Boolean(initPushNotifications()),
     tokenCount: Array.isArray(user.pushTokens) ? user.pushTokens.length : 0,
     updatedAt: Array.isArray(user.pushTokens) && user.pushTokens.length
       ? user.pushTokens[user.pushTokens.length - 1].updatedAt
-      : null
+      : null,
+    pushDebug: user.pushDebug || null,
+    diagnostics: pushDiagnostics
   };
 }
 
@@ -381,6 +441,10 @@ async function sendPushTest(req, res) {
       }
     }
   });
+  pushDiagnostics.lastSendAt = new Date().toISOString();
+  pushDiagnostics.lastSendSuccess = result.successCount;
+  pushDiagnostics.lastSendFailed = result.failureCount;
+  pushDiagnostics.lastSendError = result.responses.find((response) => response.error)?.error?.message || "";
   json(res, 200, { ok: true, success: result.successCount, failed: result.failureCount, ...pushStatusForUser(auth.user) });
 }
 
@@ -1153,8 +1217,9 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/device-login") return deviceLogin(req, res);
     if (req.method === "POST" && url.pathname === "/api/logout") return logout(req, res);
     if (req.method === "POST" && url.pathname === "/api/push-token") return registerPushToken(req, res);
+    if (req.method === "POST" && url.pathname === "/api/push-debug") return savePushDebug(req, res);
     if (req.method === "GET" && url.pathname === "/api/push-status") return getPushStatus(req, res);
-    if (req.method === "POST" && url.pathname === "/api/push-test") return sendPushTest(req, res);
+    if ((req.method === "POST" || req.method === "GET") && url.pathname === "/api/push-test") return sendPushTest(req, res);
     if (req.method === "GET" && url.pathname === "/api/me") {
       const auth = getSession(req);
       if (!auth) return json(res, 200, { user: null });
