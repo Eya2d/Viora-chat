@@ -2985,6 +2985,16 @@ function schedulePendingSync(delay = 0) {
   state.syncTimer = setTimeout(syncPendingMessages, delay);
 }
 
+function hasPendingSyncWork() {
+  return pendingQueue().length > 0 || pendingDeleteQueue().length > 0;
+}
+
+function runPendingSyncNow() {
+  if (!state.user || !hasPendingSyncWork()) return;
+  schedulePendingDeleteSync(0);
+  schedulePendingSync(0);
+}
+
 async function ensureServerSessionForSync() {
   if (!state.user) return false;
   try {
@@ -3846,8 +3856,7 @@ if (window.ResizeObserver && els.messages) {
 
 window.addEventListener("online", () => {
   updateAccountLabel();
-  schedulePendingDeleteSync(0);
-  schedulePendingSync(0);
+  runPendingSyncNow();
   scheduleReconnect(0);
 });
 
@@ -3869,6 +3878,11 @@ setInterval(() => {
     scheduleReconnect(100);
   }
 }, 7000);
+
+setInterval(() => {
+  if (!navigator.onLine) return;
+  runPendingSyncNow();
+}, 1500);
 
 loadMe().catch(() => {
   const cachedUser = cachedCurrentUser();
