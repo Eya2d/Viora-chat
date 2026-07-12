@@ -53,6 +53,8 @@ const state = {
   keepScrollBottomUntil: 0,
   syncTimer: null,
   syncing: false,
+  deleteSyncTimer: null,
+  deleteSyncing: false,
   reconnectTimer: null,
   reconnecting: false,
   recorder: null,
@@ -532,6 +534,25 @@ function savePendingQueue(queue) {
   localStorage.setItem(cacheKey("pending"), JSON.stringify(queue));
 }
 
+function pendingDeleteQueue() {
+  return safeJsonParse(localStorage.getItem(cacheKey("pendingDeletes")), []);
+}
+
+function savePendingDeleteQueue(queue) {
+  if (!state.user) return;
+  localStorage.setItem(cacheKey("pendingDeletes"), JSON.stringify(queue));
+}
+
+function schedulePendingDeleteSync(delay = 0) {
+  if (!state.user) return;
+  clearTimeout(state.deleteSyncTimer);
+  state.deleteSyncTimer = setTimeout(syncPendingDeletes, delay);
+}
+
+function isPendingDeleted(messageId) {
+  return pendingDeleteQueue().some((item) => item.messageId === messageId);
+}
+
 function openPendingMediaDb() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(PENDING_MEDIA_DB, 1);
@@ -586,6 +607,15 @@ async function deletePendingFiles(fileIds = []) {
   await pendingMediaStore("readwrite", (store) => {
     fileIds.forEach((id) => store.delete(id));
   });
+}
+
+async function removeQueuedOutgoingMessage(localId) {
+  const queue = pendingQueue();
+  const item = queue.find((entry) => entry.localId === localId);
+  if (!item) return false;
+  savePendingQueue(queue.filter((entry) => entry.localId !== localId));
+  if (item.kind === "media") await deletePendingFiles(item.fileIds || []);
+  return true;
 }
 
 function isOfflineError(error) {
@@ -2815,6 +2845,7 @@ async function loadMessages() {
     pendingMessages.forEach((message) => merged.set(message.id, message));
     messages = Array.from(merged.values());
   }
+  messages = messages.filter((message) => !isPendingDeleted(message.id));
   if (loadId !== state.messageLoadId) return;
   els.messages.textContent = "";
   state.messages.clear();
@@ -2925,7 +2956,8 @@ async function reconnectToServer() {
   try {
     startEvents();
     await loadUsers();
-    syncPendingMessages();
+    await syncPendingDeletes();
+    await syncPendingMessages();
     if (!els.chatPage.classList.contains("hidden")) {
       await loadMessages();
     }
@@ -2941,6 +2973,61 @@ function scheduleReconnect(delay = 1500) {
   if (!state.user) return;
   clearTimeout(state.reconnectTimer);
   state.reconnectTimer = setTimeout(() => reconnectToServer(), delay);
+}
+
+function schedulePendingSync(delay = 0) {
+  if (!state.user) return;
+  clearTimeout(state.syncTimer);
+  state.syncTimer = setTimeout(syncPendingMessages, delay);
+}
+
+async function ensureServerSessionForSync() {
+  if (!state.user) return false;
+  try {
+    const { user, rememberToken } = await api(`/api/me?deviceId=${encodeURIComponent(state.deviceId)}`);
+    if (user) {
+      storeRememberSession(user, rememberToken);
+      state.user = user;
+      cacheCurrentUser(user);
+      return true;
+    }
+  } catch (error) {
+    if (isOfflineError(error)) return false;
+  }
+
+  const userId = localStorage.getItem("vioraRememberUserId") || state.user.id;
+  const storedRememberToken = localStorage.getItem("vioraRememberToken") || "";
+  if (userId && storedRememberToken) {
+    try {
+      const { user } = await api("/api/remember", {
+        method: "POST",
+        body: JSON.stringify({ userId, rememberToken: storedRememberToken })
+      });
+      if (user) {
+        state.user = user;
+        cacheCurrentUser(user);
+        return true;
+      }
+    } catch (error) {
+      if (isOfflineError(error)) return false;
+    }
+  }
+
+  try {
+    const { user, rememberToken } = await api("/api/device-login", {
+      method: "POST",
+      body: JSON.stringify({ deviceId: state.deviceId })
+    });
+    if (user) {
+      storeRememberSession(user, rememberToken);
+      state.user = user;
+      cacheCurrentUser(user);
+      return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
 }
 
 function createPendingTextMessage(text, recipientId = "", options = {}) {
@@ -3078,6 +3165,11 @@ async function syncPendingMessages() {
   state.syncing = true;
   const remaining = [];
   try {
+    const hasSession = await ensureServerSessionForSync();
+    if (!hasSession) {
+      remaining.push(...queue);
+      return;
+    }
     for (let index = 0; index < queue.length; index += 1) {
       const item = queue[index];
       try {
@@ -3109,10 +3201,52 @@ async function syncPendingMessages() {
     state.syncing = false;
     savePendingQueue(remaining);
     if (remaining.length) {
-      clearTimeout(state.syncTimer);
-      state.syncTimer = setTimeout(syncPendingMessages, 5000);
+      schedulePendingSync(2000);
     }
   }
+}
+
+async function syncPendingDeletes() {
+  if (!state.user || state.deleteSyncing) return;
+  const queue = pendingDeleteQueue();
+  if (!queue.length) return;
+  state.deleteSyncing = true;
+  const remaining = [];
+  try {
+    const hasSession = await ensureServerSessionForSync();
+    if (!hasSession) {
+      remaining.push(...queue);
+      return;
+    }
+    for (let index = 0; index < queue.length; index += 1) {
+      const item = queue[index];
+      try {
+        await api(`/api/messages/${encodeURIComponent(item.messageId)}/delete`, {
+          method: "POST",
+          body: JSON.stringify({ mode: item.mode || "me" })
+        });
+      } catch (error) {
+        if (/الرسالة غير موجودة|not found/i.test(error.message || "")) continue;
+        remaining.push(...queue.slice(index));
+        break;
+      }
+    }
+  } finally {
+    state.deleteSyncing = false;
+    savePendingDeleteQueue(remaining);
+    if (remaining.length) schedulePendingDeleteSync(2000);
+  }
+}
+
+async function queuePendingDelete(messageId, mode = "me") {
+  if (!messageId) return;
+  if (await removeQueuedOutgoingMessage(messageId)) return;
+  const queue = pendingDeleteQueue();
+  if (!queue.some((item) => item.messageId === messageId && item.mode === mode)) {
+    queue.push({ messageId, mode, createdAt: new Date().toISOString() });
+    savePendingDeleteQueue(queue);
+  }
+  schedulePendingDeleteSync(250);
 }
 
 function queuePendingTextMessage(text, recipientId = currentRecipientId()) {
@@ -3129,8 +3263,7 @@ function queuePendingTextMessage(text, recipientId = currentRecipientId()) {
   savePendingQueue(queue);
   addMessage(message);
   showToast(t("messageQueuedOffline"));
-  clearTimeout(state.syncTimer);
-  state.syncTimer = setTimeout(syncPendingMessages, 1200);
+  schedulePendingSync(250);
   return message;
 }
 
@@ -3158,8 +3291,7 @@ async function queuePendingMediaMessage(files, caption = "", recipientId = curre
   savePendingQueue(queue);
   addMessage(message);
   showToast(t("messageQueuedOffline"));
-  clearTimeout(state.syncTimer);
-  state.syncTimer = setTimeout(syncPendingMessages, 1200);
+  schedulePendingSync(250);
   return message;
 }
 
@@ -3472,12 +3604,32 @@ els.messageOverlay.addEventListener("click", closeOverlayPanels);
 els.forwardMessageButton.addEventListener("click", openShareModal);
 els.closeConversationButton?.addEventListener("click", closeConversationView);
 
+async function deleteMessageWithOfflineSupport(messageId, mode = "me") {
+  if (!messageId) return;
+  if (await removeQueuedOutgoingMessage(messageId)) {
+    removeMessage(messageId);
+    return;
+  }
+  if (!navigator.onLine) {
+    await queuePendingDelete(messageId, mode);
+    removeMessage(messageId);
+    return;
+  }
+  try {
+    await api(`/api/messages/${encodeURIComponent(messageId)}/delete`, { method: "POST", body: JSON.stringify({ mode }) });
+    removeMessage(messageId);
+  } catch (error) {
+    if (!isOfflineError(error)) throw error;
+    await queuePendingDelete(messageId, mode);
+    removeMessage(messageId);
+  }
+}
+
 async function deleteSelectedMessage(mode = "me") {
   if (!state.selectedMessage) return;
   const messageId = state.selectedMessage.id;
   try {
-    await api(`/api/messages/${encodeURIComponent(messageId)}/delete`, { method: "POST", body: JSON.stringify({ mode }) });
-    removeMessage(messageId);
+    await deleteMessageWithOfflineSupport(messageId, mode);
     closeMessageContextMenu();
     closeConfirmModal();
     showToast(t("messageDeleted"));
@@ -3491,8 +3643,7 @@ async function deleteSelectedMessages(mode = "me") {
   if (!messages.length) return;
   try {
     for (const message of messages) {
-      await api(`/api/messages/${encodeURIComponent(message.id)}/delete`, { method: "POST", body: JSON.stringify({ mode }) });
-      state.messages.delete(message.id);
+      await deleteMessageWithOfflineSupport(message.id, mode);
       state.selectedMessageIds.delete(message.id);
     }
     state.selectionMode = false;
@@ -3690,8 +3841,9 @@ if (window.ResizeObserver && els.messages) {
 
 window.addEventListener("online", () => {
   updateAccountLabel();
-  syncPendingMessages();
-  scheduleReconnect(200);
+  schedulePendingDeleteSync(0);
+  schedulePendingSync(0);
+  scheduleReconnect(0);
 });
 
 window.addEventListener("offline", () => {
@@ -3706,11 +3858,12 @@ window.addEventListener("popstate", () => {
 
 setInterval(() => {
   if (!state.user || state.reconnecting) return;
-  syncPendingMessages();
+  schedulePendingDeleteSync(0);
+  schedulePendingSync(0);
   if (!state.events || state.events.readyState === EventSource.CLOSED) {
     scheduleReconnect(100);
   }
-}, 7000);
+}, 2000);
 
 loadMe().catch(() => {
   const cachedUser = cachedCurrentUser();
