@@ -55,6 +55,8 @@ const state = {
   keepScrollBottomUntil: 0,
   syncTimer: null,
   syncing: false,
+  pushToken: "",
+  pushTokenRegistered: "",
   deleteSyncTimer: null,
   deleteSyncing: false,
   reconnectTimer: null,
@@ -671,6 +673,24 @@ async function api(path, options = {}) {
   return payload;
 }
 
+async function registerPushToken() {
+  if (!state.user || !state.pushToken || state.pushTokenRegistered === state.pushToken) return;
+  try {
+    await api("/api/push-token", {
+      method: "POST",
+      body: JSON.stringify({ token: state.pushToken, deviceId: state.deviceId })
+    });
+    state.pushTokenRegistered = state.pushToken;
+  } catch {
+    state.pushTokenRegistered = "";
+  }
+}
+
+window.vioraSetPushToken = (token) => {
+  state.pushToken = String(token || "").trim();
+  registerPushToken();
+};
+
 function showPage(name) {
   els.loadingPage.classList.toggle("hidden", name !== "loading");
   els.authPage.classList.toggle("hidden", name !== "auth");
@@ -1220,6 +1240,7 @@ function setAuthenticated(user) {
   }
 
   cacheCurrentUser(user);
+  registerPushToken();
   updateAccountLabel();
   els.settingsName.textContent = user.name;
   els.settingsUsername.textContent = `@${user.username}`;
@@ -3586,7 +3607,8 @@ els.logoutButton.addEventListener("click", async () => {
       body: JSON.stringify({
         userId: state.user?.id || localStorage.getItem("vioraRememberUserId") || "",
         rememberToken: localStorage.getItem("vioraRememberToken") || "",
-        deviceId: state.deviceId
+        deviceId: state.deviceId,
+        pushToken: state.pushToken || state.pushTokenRegistered || ""
       })
     });
     clearRememberSession();
