@@ -3260,6 +3260,7 @@ async function queuePendingDelete(messageId, mode = "me") {
 function queuePendingTextMessage(text, recipientId = currentRecipientId()) {
   const message = createPendingTextMessage(text, recipientId);
   const queue = pendingQueue();
+  if (queue.some((item) => item.localId === message.id)) return message;
   queue.push({
     kind: "text",
     localId: message.id,
@@ -3305,23 +3306,8 @@ async function queuePendingMediaMessage(files, caption = "", recipientId = curre
 
 async function submitText(text) {
   sendTyping(false, "typing");
-  if (!navigator.onLine) {
-    queuePendingTextMessage(text);
-    playTone("send");
-    return;
-  }
-  try {
-    const { message } = await api("/api/messages", {
-      method: "POST",
-      body: JSON.stringify({ text, recipientId: currentRecipientId() })
-    });
-    addMessage(message);
-    playTone("send");
-  } catch (error) {
-    if (!isOfflineError(error)) throw error;
-    queuePendingTextMessage(text);
-    playTone("send");
-  }
+  queuePendingTextMessage(text);
+  playTone("send");
 }
 
 async function submitMedia(caption) {
@@ -3329,53 +3315,8 @@ async function submitMedia(caption) {
   const files = [...state.mediaFiles];
   const recipientId = currentRecipientId();
   const captionText = String(caption || "").trim();
-  let uploadedAny = false;
   try {
-    if (!navigator.onLine) {
-      await queuePendingMediaMessage(files, captionText, recipientId);
-      playTone("send");
-      return;
-    }
     if (files.length > 10) throw new Error(t("maxAttachments"));
-    const imagesOnly = files.every((file) => filePreviewKind(file) === "image");
-    const imagesOnlyGroup = files.length > 1 && imagesOnly;
-    if (imagesOnlyGroup) {
-      const formData = new FormData();
-      files.forEach((file) => formData.append("media", file));
-      formData.append("caption", captionText);
-      formData.append("recipientId", recipientId);
-      const { message } = await api("/api/upload-group", {
-        method: "POST",
-        body: formData
-      });
-      if (!message?.id) throw new Error(t("unexpectedError"));
-      uploadedAny = true;
-      addMessage(message);
-      playTone("send");
-      return;
-    }
-    for (const [index, file] of files.entries()) {
-      const formData = new FormData();
-      formData.append("media", file);
-      formData.append("caption", imagesOnly && index === 0 ? captionText : "");
-      formData.append("recipientId", recipientId);
-      const { message } = await api("/api/upload", {
-        method: "POST",
-        body: formData
-      });
-      if (!message?.id) throw new Error(t("unexpectedError"));
-      uploadedAny = true;
-      addMessage(message);
-      if (index < files.length - 1) await waitForNextMessageLoad();
-    }
-    if (!imagesOnly && captionText) {
-      await waitForNextMessageLoad();
-      await submitText(captionText);
-    } else if (files.length) {
-      playTone("send");
-    }
-  } catch (error) {
-    if (!isOfflineError(error) || uploadedAny) throw error;
     await queuePendingMediaMessage(files, captionText, recipientId);
     playTone("send");
   } finally {
