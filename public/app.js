@@ -2995,6 +2995,12 @@ function runPendingSyncNow() {
   schedulePendingSync(0);
 }
 
+window.vioraNetworkBack = () => {
+  updateAccountLabel();
+  runPendingSyncNow();
+  scheduleReconnect(0);
+};
+
 async function ensureServerSessionForSync() {
   if (!state.user) return false;
   try {
@@ -3855,9 +3861,7 @@ if (window.ResizeObserver && els.messages) {
 }
 
 window.addEventListener("online", () => {
-  updateAccountLabel();
-  runPendingSyncNow();
-  scheduleReconnect(0);
+  window.vioraNetworkBack();
 });
 
 window.addEventListener("offline", () => {
