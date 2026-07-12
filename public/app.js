@@ -619,16 +619,20 @@ async function removeQueuedOutgoingMessage(localId) {
 }
 
 function isOfflineError(error) {
-  return error instanceof TypeError || !navigator.onLine || /Failed to fetch|NetworkError|Load failed/i.test(error?.message || "");
+  return error?.name === "AbortError" || error instanceof TypeError || !navigator.onLine || /Failed to fetch|NetworkError|Load failed|aborted/i.test(error?.message || "");
 }
 
 async function api(path, options = {}) {
   const headers = options.body instanceof FormData ? {} : { "Content-Type": "application/json" };
+  const { timeoutMs, ...fetchOptions } = options;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs ?? (options.body instanceof FormData ? 180000 : 30000));
   const response = await fetch(serverUrl(path), {
     credentials: IS_LOCAL_APP ? "include" : "same-origin",
-    ...options,
-    headers: { ...headers, ...(options.headers || {}) }
-  });
+    ...fetchOptions,
+    headers: { ...headers, ...(options.headers || {}) },
+    signal: options.signal || controller.signal
+  }).finally(() => clearTimeout(timeout));
   let payload = {};
   try {
     payload = await response.json();
@@ -2773,6 +2777,8 @@ async function loadMe() {
     if (isOfflineError(error) && cachedUser) {
       setAuthenticated(cachedUser);
       setUsers(cachedUsers());
+      schedulePendingDeleteSync(0);
+      schedulePendingSync(0);
       return;
     }
   }
@@ -2809,6 +2815,8 @@ async function loadMe() {
     if (cachedUser) {
       setAuthenticated(cachedUser);
       setUsers(cachedUsers());
+      schedulePendingDeleteSync(0);
+      schedulePendingSync(0);
       return;
     }
     setAuthenticated(null);
@@ -3852,15 +3860,28 @@ window.addEventListener("offline", () => {
   if (!els.chatPage.classList.contains("hidden")) updateChatHeader();
 });
 
+window.addEventListener("focus", () => {
+  schedulePendingDeleteSync(0);
+  schedulePendingSync(0);
+  scheduleReconnect(0);
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  schedulePendingDeleteSync(0);
+  schedulePendingSync(0);
+  scheduleReconnect(0);
+});
+
 window.addEventListener("popstate", () => {
   if (handleAppBack()) primeBackNavigation();
 });
 
 setInterval(() => {
-  if (!state.user || state.reconnecting) return;
+  if (!state.user) return;
   schedulePendingDeleteSync(0);
   schedulePendingSync(0);
-  if (!state.events || state.events.readyState === EventSource.CLOSED) {
+  if (!state.reconnecting && (!state.events || state.events.readyState === EventSource.CLOSED)) {
     scheduleReconnect(100);
   }
 }, 2000);
@@ -3870,6 +3891,8 @@ loadMe().catch(() => {
   if (cachedUser) {
     setAuthenticated(cachedUser);
     setUsers(cachedUsers());
+    schedulePendingDeleteSync(0);
+    schedulePendingSync(0);
   } else {
     setAuthenticated(null);
   }
