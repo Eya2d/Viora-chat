@@ -619,20 +619,16 @@ async function removeQueuedOutgoingMessage(localId) {
 }
 
 function isOfflineError(error) {
-  return error?.name === "AbortError" || error instanceof TypeError || !navigator.onLine || /Failed to fetch|NetworkError|Load failed|aborted/i.test(error?.message || "");
+  return error instanceof TypeError || !navigator.onLine || /Failed to fetch|NetworkError|Load failed/i.test(error?.message || "");
 }
 
 async function api(path, options = {}) {
   const headers = options.body instanceof FormData ? {} : { "Content-Type": "application/json" };
-  const { timeoutMs, ...fetchOptions } = options;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs ?? (options.body instanceof FormData ? 180000 : 30000));
   const response = await fetch(serverUrl(path), {
     credentials: IS_LOCAL_APP ? "include" : "same-origin",
-    ...fetchOptions,
-    headers: { ...headers, ...(options.headers || {}) },
-    signal: options.signal || controller.signal
-  }).finally(() => clearTimeout(timeout));
+    ...options,
+    headers: { ...headers, ...(options.headers || {}) }
+  });
   let payload = {};
   try {
     payload = await response.json();
@@ -3306,8 +3302,23 @@ async function queuePendingMediaMessage(files, caption = "", recipientId = curre
 
 async function submitText(text) {
   sendTyping(false, "typing");
-  queuePendingTextMessage(text);
-  playTone("send");
+  if (!navigator.onLine) {
+    queuePendingTextMessage(text);
+    playTone("send");
+    return;
+  }
+  try {
+    const { message } = await api("/api/messages", {
+      method: "POST",
+      body: JSON.stringify({ text, recipientId: currentRecipientId() })
+    });
+    addMessage(message);
+    playTone("send");
+  } catch (error) {
+    if (!isOfflineError(error)) throw error;
+    queuePendingTextMessage(text);
+    playTone("send");
+  }
 }
 
 async function submitMedia(caption) {
@@ -3315,8 +3326,53 @@ async function submitMedia(caption) {
   const files = [...state.mediaFiles];
   const recipientId = currentRecipientId();
   const captionText = String(caption || "").trim();
+  let uploadedAny = false;
   try {
+    if (!navigator.onLine) {
+      await queuePendingMediaMessage(files, captionText, recipientId);
+      playTone("send");
+      return;
+    }
     if (files.length > 10) throw new Error(t("maxAttachments"));
+    const imagesOnly = files.every((file) => filePreviewKind(file) === "image");
+    const imagesOnlyGroup = files.length > 1 && imagesOnly;
+    if (imagesOnlyGroup) {
+      const formData = new FormData();
+      files.forEach((file) => formData.append("media", file));
+      formData.append("caption", captionText);
+      formData.append("recipientId", recipientId);
+      const { message } = await api("/api/upload-group", {
+        method: "POST",
+        body: formData
+      });
+      if (!message?.id) throw new Error(t("unexpectedError"));
+      uploadedAny = true;
+      addMessage(message);
+      playTone("send");
+      return;
+    }
+    for (const [index, file] of files.entries()) {
+      const formData = new FormData();
+      formData.append("media", file);
+      formData.append("caption", imagesOnly && index === 0 ? captionText : "");
+      formData.append("recipientId", recipientId);
+      const { message } = await api("/api/upload", {
+        method: "POST",
+        body: formData
+      });
+      if (!message?.id) throw new Error(t("unexpectedError"));
+      uploadedAny = true;
+      addMessage(message);
+      if (index < files.length - 1) await waitForNextMessageLoad();
+    }
+    if (!imagesOnly && captionText) {
+      await waitForNextMessageLoad();
+      await submitText(captionText);
+    } else if (files.length) {
+      playTone("send");
+    }
+  } catch (error) {
+    if (!isOfflineError(error) || uploadedAny) throw error;
     await queuePendingMediaMessage(files, captionText, recipientId);
     playTone("send");
   } finally {
@@ -3801,31 +3857,18 @@ window.addEventListener("offline", () => {
   if (!els.chatPage.classList.contains("hidden")) updateChatHeader();
 });
 
-window.addEventListener("focus", () => {
-  schedulePendingDeleteSync(0);
-  schedulePendingSync(0);
-  scheduleReconnect(0);
-});
-
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) return;
-  schedulePendingDeleteSync(0);
-  schedulePendingSync(0);
-  scheduleReconnect(0);
-});
-
 window.addEventListener("popstate", () => {
   if (handleAppBack()) primeBackNavigation();
 });
 
 setInterval(() => {
-  if (!state.user) return;
+  if (!state.user || state.reconnecting) return;
   schedulePendingDeleteSync(0);
   schedulePendingSync(0);
-  if (!state.reconnecting && (!state.events || state.events.readyState === EventSource.CLOSED)) {
+  if (!state.events || state.events.readyState === EventSource.CLOSED) {
     scheduleReconnect(100);
   }
-}, 2000);
+}, 7000);
 
 loadMe().catch(() => {
   const cachedUser = cachedCurrentUser();
