@@ -31,6 +31,8 @@ const state = {
   attachmentPreviewUrls: [],
   pendingObjectUrls: [],
   messageLoadId: 0,
+  renderedConversationId: "",
+  renderedMessagesSignature: "",
   isSending: false,
   activeChat: { type: "general", user: null },
   search: "",
@@ -530,6 +532,34 @@ function cacheMessages(conversationId = conversationIdFor()) {
 
 function cachedMessages(conversationId = conversationIdFor()) {
   return safeJsonParse(localStorage.getItem(cacheKey(`messages:${conversationId}`)), []);
+}
+
+function messagesContentSignature(messages = []) {
+  return JSON.stringify([...messages]
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+    .map((message) => ({
+      id: message.id,
+      createdAt: message.createdAt,
+      text: message.text || "",
+      pending: Boolean(message.pending),
+      media: message.media ? {
+        url: message.media.url || "",
+        name: message.media.name || "",
+        mime: message.media.mime || "",
+        size: message.media.size || 0
+      } : null,
+      mediaGroup: Array.isArray(message.mediaGroup) ? message.mediaGroup.map((item) => ({
+        url: item.url || "",
+        name: item.name || "",
+        mime: item.mime || "",
+        size: item.size || 0
+      })) : null
+    })));
+}
+
+function updateRenderedMessagesSignature(conversationId = conversationIdFor()) {
+  state.renderedConversationId = conversationId;
+  state.renderedMessagesSignature = messagesContentSignature(Array.from(state.messages.values()));
 }
 
 function pendingQueue() {
@@ -1366,9 +1396,11 @@ function addMessage(message) {
   cacheMessages();
   if (previousMessage && new Date(previousMessage.createdAt) > new Date(message.createdAt)) {
     rerenderMessages();
+    updateRenderedMessagesSignature();
     return;
   }
   appendRenderedMessage(message, previousMessage);
+  updateRenderedMessagesSignature();
 }
 
 function upsertMessage(message) {
@@ -1377,6 +1409,7 @@ function upsertMessage(message) {
   state.messages.set(message.id, message);
   cacheMessages();
   rerenderMessages();
+  updateRenderedMessagesSignature();
 }
 
 function updateMessageStatus(payload) {
@@ -1641,6 +1674,7 @@ function finalizePendingMessage(localId, messages = []) {
   messages.slice(1).forEach((message) => {
     if (message?.id) state.messages.set(message.id, message);
   });
+  updateRenderedMessagesSignature();
   return true;
 }
 
@@ -1744,6 +1778,7 @@ function removeMessage(messageId) {
   if (state.selectedMessageIds.size === 0) state.selectionMode = false;
   cacheMessages();
   rerenderMessages();
+  updateRenderedMessagesSignature();
 }
 
 function clearActiveMessages() {
@@ -1752,6 +1787,7 @@ function clearActiveMessages() {
   state.selectedMessageIds.clear();
   cacheMessages();
   rerenderMessages({ forceBottom: true });
+  updateRenderedMessagesSignature();
 }
 
 async function clearCurrentChat() {
@@ -2801,6 +2837,18 @@ async function renderMessagesOneByOne(messages, loadId) {
   return true;
 }
 
+function refreshRenderedMessageMeta(messages = []) {
+  state.messages.clear();
+  messages.forEach((message) => {
+    if (!message?.id) return;
+    state.messages.set(message.id, message);
+    const node = els.messages.querySelector(`[data-message-id="${CSS.escape(message.id)}"]`);
+    const time = node?.querySelector("time");
+    if (time) time.innerHTML = `${formatTime(message.createdAt)}${message.editedAt ? ` · ${escapeHtml(t("edited"))}` : ""}${messageTickHtml(message)}`;
+  });
+  updateSelectionUi();
+}
+
 async function loadMe() {
   try {
     const { user, rememberToken } = await api(`/api/me?deviceId=${encodeURIComponent(state.deviceId)}`);
@@ -2894,12 +2942,22 @@ async function loadMessages() {
   }
   messages = messages.filter((message) => !isPendingDeleted(message.id));
   if (loadId !== state.messageLoadId) return;
+  const contentSignature = messagesContentSignature(messages);
+  if (state.renderedConversationId === conversationId && state.renderedMessagesSignature === contentSignature && els.messages.childElementCount) {
+    refreshRenderedMessageMeta([...messages].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)));
+    cacheMessages(conversationId);
+    if (state.pendingClearChat?.conversationId === conversationIdFor()) renderPendingClearChatNotice(false);
+    if (navigator.onLine) markActiveChatRead();
+    return;
+  }
   els.messages.textContent = "";
   state.messages.clear();
   state.selectionMode = false;
   state.selectedMessageIds.clear();
   const completed = await renderMessagesOneByOne(messages, loadId);
   if (!completed) return;
+  state.renderedConversationId = conversationId;
+  state.renderedMessagesSignature = contentSignature;
   cacheMessages(conversationId);
   if (state.pendingClearChat?.conversationId === conversationIdFor()) renderPendingClearChatNotice(false);
   if (navigator.onLine) markActiveChatRead();
