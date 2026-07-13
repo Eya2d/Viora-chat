@@ -74,6 +74,12 @@ button {
   display: none !important;
 }
 
+img {
+  user-select: none;
+  -webkit-user-drag: none;
+  display: block;
+}
+
 .coc {
   position: relative;
 }
@@ -569,10 +575,11 @@ html[dir="ltr"] .chat-row {
   height: 44px;
   flex: 0 0 44px;
   border-radius: 50%;
+  background: #02a495;
 }
 
 .avatar.group {
-  background: linear-gradient(135deg, var(--green), #31a24c);
+  /* background: linear-gradient(135deg, var(--green), #31a24c); */
 }
 
 .chat-page {
@@ -2233,11 +2240,25 @@ html[dir="ltr"] .context-menu {
 .viewer-body {
   position: relative;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--soft);
   display: flex;
+}
+
+.viewer-body.viewer-swipe-enabled {
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.viewer-body.viewer-dragging {
+  cursor: grabbing;
+}
+
+.viewer-body.viewer-swipe-enabled .viewer-image {
+  pointer-events: none;
 }
 
 .viewer-image {
