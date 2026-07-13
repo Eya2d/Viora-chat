@@ -7,7 +7,7 @@
     <link rel="icon" href="icon.ico">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#075e54">
-    <link rel="stylesheet" href="/styles.css?v=20260713-style-icon-2">
+    <link rel="stylesheet" href="/styles.css?v=20260713-menu-layer-style">
 
     <script type="module" src="https://unpkg.com/ionicons@8.0.13/dist/ionicons/ionicons.esm.js"></script>
   </head>
@@ -284,7 +284,7 @@
       <header>
         <h2 id="viewerTitle" data-i18n="viewFile">عرض الملف</h2>
         <div>
-          <a id="viewerOpenLink" href="#" download title="تنزيل الملف" aria-label="تنزيل الملف" data-i18n-title="downloadFile" data-i18n-aria="downloadFile"><ion-icon name="arrow-down-outline"></ion-icon></a>
+          <a id="viewerOpenLink" href="#" download onclick="return window.vioraDownloadViewerFile && window.vioraDownloadViewerFile(event)" title="تنزيل الملف" aria-label="تنزيل الملف" data-i18n-title="downloadFile" data-i18n-aria="downloadFile"><ion-icon name="arrow-down-outline"></ion-icon></a>
           <button type="button" id="closeViewerModal" aria-label="إغلاق" data-i18n-aria="close">×</button>
         </div>
       </header>
@@ -326,6 +326,6 @@
       </div>
       <audio id="remoteCallAudio" autoplay playsinline></audio>
     </section>
-    <script src="/app.js?v=20260713-notify-once"></script>
+    <script src="/app.js?v=20260713-call-close-video-audio"></script>
   </body>
 </html>
