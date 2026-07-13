@@ -198,7 +198,7 @@ button {
   display: grid;
   place-items: center;
   color: #fff;
-  background: var(--green);
+  background: #0000;
   font-weight: 800;
   background-position: center;
   background-size: cover;
@@ -214,6 +214,8 @@ button {
   margin: 0 auto 14px;
   border-radius: 20px;
   font-size: 34px;
+  background-image: url(icon.ico);
+  background-size: cover;
 }
 
 .auth-hero h1,
