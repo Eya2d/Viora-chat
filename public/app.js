@@ -536,6 +536,15 @@ function cachedMessages(conversationId = conversationIdFor()) {
   return safeJsonParse(localStorage.getItem(cacheKey(`messages:${conversationId}`)), []);
 }
 
+function persistedNotifiedMessageIds() {
+  return safeJsonParse(localStorage.getItem(cacheKey("notifiedMessages")), []);
+}
+
+function savePersistedNotifiedMessageIds(ids) {
+  if (!state.user) return;
+  localStorage.setItem(cacheKey("notifiedMessages"), JSON.stringify(ids.slice(-1000)));
+}
+
 function messagesContentSignature(messages = []) {
   return JSON.stringify([...messages]
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
@@ -880,22 +889,50 @@ function rememberLimited(set, value, limit = 600) {
   return true;
 }
 
+function notificationMessageKey(message) {
+  if (!message) return "";
+  return String(message.id || [
+    messageConversationId(message),
+    message.userId || "",
+    message.createdAt || "",
+    message.text || "",
+    message.media?.url || "",
+    Array.isArray(message.mediaGroup) ? message.mediaGroup.map((item) => item.url || item.name || "").join(",") : ""
+  ].join("|"));
+}
+
+function reserveIncomingNotification(message) {
+  const key = notificationMessageKey(message);
+  if (!key) return "";
+  const persisted = persistedNotifiedMessageIds();
+  if (state.notifiedMessageIds.has(key) || persisted.includes(key)) return "";
+  rememberLimited(state.notifiedMessageIds, key, 1000);
+  persisted.push(key);
+  savePersistedNotifiedMessageIds(persisted);
+  return key;
+}
+
 async function notifyIncomingMessage(message) {
   if (!message || message.userId === state.user?.id) return;
-  if (!rememberLimited(state.notifiedMessageIds, message.id)) return;
   const title = message.author || "Viora Chat";
   const body = messageNotificationBody(message).slice(0, 160);
   try {
     if (window.VioraDesktop?.notify) {
       const visible = await window.VioraDesktop.isVisible?.();
-      if (!visible) await window.VioraDesktop.notify({ title, body, conversationId: messageConversationId(message) });
+      if (!visible) {
+        const notificationId = reserveIncomingNotification(message);
+        if (notificationId) await window.VioraDesktop.notify({ title, body, conversationId: messageConversationId(message), messageId: notificationId });
+      }
       return;
     }
   } catch {}
   if (!("Notification" in window) || document.visibilityState === "visible") return;
   try {
     if (Notification.permission === "default") await Notification.requestPermission();
-    if (Notification.permission === "granted") new Notification(title, { body, icon: "/icon.png" });
+    if (Notification.permission === "granted") {
+      const notificationId = reserveIncomingNotification(message);
+      if (notificationId) new Notification(title, { body, icon: "/icon.ico", tag: notificationId });
+    }
   } catch {}
 }
 
