@@ -503,6 +503,8 @@ function storeRememberSession(user, rememberToken) {
 function clearRememberSession() {
   localStorage.removeItem("vioraRememberUserId");
   localStorage.removeItem("vioraRememberToken");
+  localStorage.removeItem("vioraLastUserId");
+  clearDesktopSession().catch(() => {});
 }
 
 function safeJsonParse(value, fallback) {
@@ -523,35 +525,92 @@ function currentUserCacheKey() {
 
 function cachedCurrentUser() {
   const rememberedUserId = localStorage.getItem("vioraRememberUserId") || "";
+  const lastUserId = localStorage.getItem("vioraLastUserId") || "";
+  const cachedUserKeys = [];
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index) || "";
+    if (/^vioraOffline:(user:)?[^:]+:currentUser$/.test(key) || /^vioraOffline:[^:]+:currentUser$/.test(key)) {
+      cachedUserKeys.push(key);
+    }
+  }
   const candidates = [
     currentUserCacheKey(),
+    lastUserId ? `vioraOffline:user:${lastUserId}:currentUser` : "",
     rememberedUserId ? `vioraOffline:user:${rememberedUserId}:currentUser` : "",
-    "vioraOffline:currentUser"
+    "vioraOffline:currentUser",
+    ...cachedUserKeys
   ].filter(Boolean);
+  const seen = new Set();
   for (const key of candidates) {
+    if (seen.has(key)) continue;
+    seen.add(key);
     const user = safeJsonParse(localStorage.getItem(key), null);
     if (!user?.id) continue;
     if (rememberedUserId && user.id !== rememberedUserId) continue;
     return user;
+  }
+  for (const key of cachedUserKeys) {
+    const user = safeJsonParse(localStorage.getItem(key), null);
+    if (user?.id) return user;
   }
   return null;
 }
 
 function cacheCurrentUser(user) {
   if (!user) return;
+  localStorage.setItem("vioraLastUserId", user.id);
   localStorage.setItem(currentUserCacheKey(), JSON.stringify(user));
   localStorage.setItem(`vioraOffline:user:${user.id}:currentUser`, JSON.stringify(user));
   const legacyUser = safeJsonParse(localStorage.getItem("vioraOffline:currentUser"), null);
   if (!legacyUser || legacyUser.id !== user.id) localStorage.removeItem("vioraOffline:currentUser");
+  persistDesktopSession({ user }).catch(() => {});
 }
 
 function cacheUsers() {
   if (!state.user) return;
-  localStorage.setItem(cacheKey("users"), JSON.stringify(Array.from(state.users.values())));
+  const users = Array.from(state.users.values());
+  localStorage.setItem(cacheKey("users"), JSON.stringify(users));
+  persistDesktopSession({ user: state.user, users }).catch(() => {});
 }
 
 function cachedUsers() {
   return safeJsonParse(localStorage.getItem(cacheKey("users")), []);
+}
+
+async function getDesktopSession() {
+  if (!window.VioraDesktop?.getSession) return null;
+  try {
+    const session = await window.VioraDesktop.getSession();
+    return session && typeof session === "object" ? session : null;
+  } catch {
+    return null;
+  }
+}
+
+async function persistDesktopSession(payload = {}) {
+  if (!window.VioraDesktop?.setSession) return;
+  const user = payload.user || state.user;
+  if (!user?.id) return;
+  const users = Array.isArray(payload.users) ? payload.users : cachedUsers();
+  await window.VioraDesktop.setSession({ user, users });
+}
+
+async function clearDesktopSession() {
+  if (!window.VioraDesktop?.clearSession) return;
+  await window.VioraDesktop.clearSession();
+}
+
+async function hydrateLocalSessionFromDesktop() {
+  const session = await getDesktopSession();
+  const user = session?.user;
+  if (!user?.id) return null;
+  localStorage.setItem("vioraLastUserId", user.id);
+  localStorage.setItem(currentUserCacheKey(), JSON.stringify(user));
+  localStorage.setItem(`vioraOffline:user:${user.id}:currentUser`, JSON.stringify(user));
+  if (Array.isArray(session.users)) {
+    localStorage.setItem(cacheKey("users", user.id), JSON.stringify(session.users));
+  }
+  return session;
 }
 
 function cacheMessages(conversationId = conversationIdFor()) {
@@ -3208,6 +3267,7 @@ function refreshRenderedMessageMeta(messages = []) {
 }
 
 async function loadMe() {
+  await hydrateLocalSessionFromDesktop();
   const cachedUser = cachedCurrentUser();
   let restoredFromCache = false;
   if (cachedUser && (IS_FILE_APP || IS_DESKTOP_APP || !navigator.onLine)) {
