@@ -1577,6 +1577,7 @@ function renderUsers() {
 }
 
 async function openChat(type, user = null) {
+  clearChatViewContent();
   state.activeChat = { type, user };
   state.unread.delete(conversationIdFor(type, user));
   state.messageSearch = "";
@@ -1589,6 +1590,20 @@ async function openChat(type, user = null) {
   showPage("chat");
   await loadMessages();
   scrollMessagesToBottom(3000);
+}
+
+function clearChatViewContent() {
+  pauseAllMedia();
+  state.messageLoadId += 1;
+  state.messages.clear();
+  state.renderedConversationId = "";
+  state.renderedMessagesSignature = "";
+  state.selectionMode = false;
+  state.selectedMessageIds.clear();
+  state.selectedMessage = null;
+  els.messages.textContent = "";
+  removePendingClearChatNotice();
+  updateSelectionUi();
 }
 
 function updateChatHeader() {
@@ -1754,6 +1769,7 @@ function handleBackFromChat() {
     clearMessageSelection({ rerender: false });
     return;
   }
+  clearChatViewContent();
   showPage("accounts");
 }
 
@@ -1814,10 +1830,7 @@ function primeBackNavigation() {
 }
 
 function closeConversationView() {
-  state.selectionMode = false;
-  state.selectedMessageIds.clear();
-  state.selectedMessage = null;
-  updateSelectionUi();
+  clearChatViewContent();
   closeMessageContextMenu();
   showPage("accounts");
 }
@@ -2804,6 +2817,10 @@ function createCustomVideoPlayer(media) {
       }
       if (player.requestFullscreen) await player.requestFullscreen();
       else await player.webkitRequestFullscreen?.();
+      if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        if (video.requestFullscreen) await video.requestFullscreen();
+        else await video.webkitRequestFullscreen?.();
+      }
     } catch {
       showToast(t("fullscreenFail"));
     }
@@ -3181,8 +3198,19 @@ function refreshRenderedMessageMeta(messages = []) {
 }
 
 async function loadMe() {
+  const cachedUser = cachedCurrentUser();
+  let restoredFromCache = false;
+  if (cachedUser && (IS_FILE_APP || IS_DESKTOP_APP || !navigator.onLine)) {
+    restoredFromCache = true;
+    setAuthenticated(cachedUser);
+    setUsers(cachedUsers());
+    schedulePendingDeleteSync(0);
+    schedulePendingSync(0);
+    if (!navigator.onLine) return;
+  }
+
   try {
-    const { user, rememberToken } = await api(`/api/me?deviceId=${encodeURIComponent(state.deviceId)}`);
+    const { user, rememberToken } = await api(`/api/me?deviceId=${encodeURIComponent(state.deviceId)}`, { timeoutMs: restoredFromCache ? 2500 : 6000 });
     if (user) {
       storeRememberSession(user, rememberToken);
       setAuthenticated(user);
@@ -3191,7 +3219,6 @@ async function loadMe() {
       return;
     }
   } catch (error) {
-    const cachedUser = cachedCurrentUser();
     if (isOfflineError(error) && cachedUser) {
       setAuthenticated(cachedUser);
       setUsers(cachedUsers());
@@ -3208,7 +3235,8 @@ async function loadMe() {
     try {
       const remembered = await api("/api/remember", {
         method: "POST",
-        body: JSON.stringify({ userId, rememberToken: storedRememberToken })
+        body: JSON.stringify({ userId, rememberToken: storedRememberToken }),
+        timeoutMs: restoredFromCache ? 2500 : 6000
       });
       setAuthenticated(remembered.user);
       await loadUsers();
@@ -3232,14 +3260,14 @@ async function loadMe() {
   try {
     const deviceSession = await api("/api/device-login", {
       method: "POST",
-      body: JSON.stringify({ deviceId: state.deviceId })
+      body: JSON.stringify({ deviceId: state.deviceId }),
+      timeoutMs: restoredFromCache ? 2500 : 6000
     });
     storeRememberSession(deviceSession.user, deviceSession.rememberToken);
     setAuthenticated(deviceSession.user);
     await loadUsers();
     syncPendingMessages();
   } catch {
-    const cachedUser = cachedCurrentUser();
     if (cachedUser) {
       setAuthenticated(cachedUser);
       setUsers(cachedUsers());
