@@ -914,7 +914,7 @@ function reserveIncomingNotification(message) {
 
 async function notifyIncomingMessage(message) {
   if (!message || message.userId === state.user?.id) return;
-  const title = message.author || "Viora Chat";
+  const title = message.author || "Viora";
   const body = messageNotificationBody(message).slice(0, 160);
   try {
     if (window.VioraDesktop?.notify) {
