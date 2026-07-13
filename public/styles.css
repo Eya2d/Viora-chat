@@ -193,6 +193,10 @@ button {
   margin-bottom: 18px;
 }
 
+.auth-hero h1 {
+  margin-bottom: 12px;
+}
+
 .logo-mark,
 .avatar {
   display: grid;
@@ -216,6 +220,7 @@ button {
   font-size: 34px;
   background-image: url(icon.ico);
   background-size: cover;
+  margin-bottom: 0;
 }
 
 .auth-hero h1,
