@@ -1,5 +1,7 @@
 const REMOTE_ORIGIN = "https://viora-chat.onrender.com";
-const IS_LOCAL_APP = window.location.protocol === "file:";
+const IS_FILE_APP = window.location.protocol === "file:";
+const IS_DESKTOP_APP = window.location.protocol === "viora:";
+const IS_LOCAL_APP = IS_FILE_APP;
 const PENDING_MEDIA_DB = "viora-pending-media";
 const PENDING_MEDIA_STORE = "files";
 const RTC_CONFIGURATION = {
@@ -19,6 +21,7 @@ function serverUrl(path) {
 }
 
 function mediaUrl(path) {
+  if ((IS_FILE_APP || IS_DESKTOP_APP) && path && String(path).startsWith("/uploads/")) return `${REMOTE_ORIGIN}${path}`;
   return serverUrl(path);
 }
 
@@ -487,6 +490,7 @@ function storeRememberSession(user, rememberToken) {
   if (!user || !rememberToken) return;
   localStorage.setItem("vioraRememberUserId", user.id);
   localStorage.setItem("vioraRememberToken", rememberToken);
+  cacheCurrentUser(user);
 }
 
 function clearRememberSession() {
@@ -506,13 +510,32 @@ function cacheKey(name, userId = state.user?.id || "guest") {
   return `vioraOffline:${userId}:${name}`;
 }
 
+function currentUserCacheKey() {
+  return `vioraOffline:${state.deviceId}:currentUser`;
+}
+
 function cachedCurrentUser() {
-  return safeJsonParse(localStorage.getItem("vioraOffline:currentUser"), null);
+  const rememberedUserId = localStorage.getItem("vioraRememberUserId") || "";
+  const candidates = [
+    currentUserCacheKey(),
+    rememberedUserId ? `vioraOffline:user:${rememberedUserId}:currentUser` : "",
+    "vioraOffline:currentUser"
+  ].filter(Boolean);
+  for (const key of candidates) {
+    const user = safeJsonParse(localStorage.getItem(key), null);
+    if (!user?.id) continue;
+    if (rememberedUserId && user.id !== rememberedUserId) continue;
+    return user;
+  }
+  return null;
 }
 
 function cacheCurrentUser(user) {
   if (!user) return;
-  localStorage.setItem("vioraOffline:currentUser", JSON.stringify(user));
+  localStorage.setItem(currentUserCacheKey(), JSON.stringify(user));
+  localStorage.setItem(`vioraOffline:user:${user.id}:currentUser`, JSON.stringify(user));
+  const legacyUser = safeJsonParse(localStorage.getItem("vioraOffline:currentUser"), null);
+  if (!legacyUser || legacyUser.id !== user.id) localStorage.removeItem("vioraOffline:currentUser");
 }
 
 function cacheUsers() {
@@ -650,6 +673,19 @@ async function getPendingFile(id) {
   return new File([record.blob], record.name || "attachment", { type: record.type || record.blob.type || "application/octet-stream" });
 }
 
+function setMediaElementSource(element, media) {
+  if (!element || !media) return;
+  if (media.url) element.src = mediaUrl(media.url);
+  if (!media.pendingFileId) return;
+  getPendingFile(media.pendingFileId).then((file) => {
+    if (!file) return;
+    const objectUrl = URL.createObjectURL(file);
+    state.pendingObjectUrls.push(objectUrl);
+    element.src = objectUrl;
+    element.load?.();
+  }).catch(() => {});
+}
+
 async function deletePendingFiles(fileIds = []) {
   if (!fileIds.length) return;
   await pendingMediaStore("readwrite", (store) => {
@@ -672,11 +708,21 @@ function isOfflineError(error) {
 
 async function api(path, options = {}) {
   const headers = options.body instanceof FormData ? {} : { "Content-Type": "application/json" };
-  const response = await fetch(serverUrl(path), {
-    credentials: IS_LOCAL_APP ? "include" : "same-origin",
-    ...options,
-    headers: { ...headers, ...(options.headers || {}) }
-  });
+  const timeoutMs = options.timeoutMs || 12000;
+  const controller = options.signal ? null : new AbortController();
+  const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  const { timeoutMs: _timeoutMs, ...fetchOptions } = options;
+  let response;
+  try {
+    response = await fetch(serverUrl(path), {
+      credentials: IS_LOCAL_APP ? "include" : "same-origin",
+      ...fetchOptions,
+      signal: fetchOptions.signal || controller?.signal,
+      headers: { ...headers, ...(options.headers || {}) }
+    });
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
   let payload = {};
   try {
     payload = await response.json();
@@ -1858,9 +1904,9 @@ function finalizePendingMessage(localId, messages = []) {
     id: firstMessage.id || localId,
     pending: false,
     mine: true,
-    media: existing.media || firstMessage.media || null,
-    mediaGroup: existing.mediaGroup || firstMessage.mediaGroup || null,
-    text: existing.text || firstMessage.text || ""
+    media: firstMessage.media || existing.media || null,
+    mediaGroup: firstMessage.mediaGroup || existing.mediaGroup || null,
+    text: firstMessage.text || existing.text || ""
   };
   state.messages.delete(localId);
   state.messages.set(merged.id, merged);
@@ -2358,8 +2404,8 @@ async function openAttachmentViewer(media, options = {}) {
       els.viewerBody.textContent = "";
       const image = document.createElement("img");
       image.className = `viewer-image${direction ? ` viewer-image-enter-${direction}` : ""}`;
-      image.src = mediaUrl(current.url);
       image.alt = current.name || t("image");
+      setMediaElementSource(image, current);
       els.viewerBody.appendChild(image);
       if (!viewerGroup || viewerGroup.length < 2) return;
       bindViewerSwipeNavigation(goPrevious, goNext);
@@ -2465,7 +2511,7 @@ function renderMedia(media) {
       openAttachmentViewer(media);
     });
   }
-  if (mediaNode.tagName !== "BUTTON" && !mediaNode.dataset.customMedia) mediaNode.src = mediaUrl(media.url);
+  if (mediaNode.tagName !== "BUTTON" && !mediaNode.dataset.customMedia) setMediaElementSource(mediaNode, media);
   if (media.type === "image" || media.type === "video") {
     bindMediaLoading(wrapper, mediaNode, media.type);
   } else {
@@ -2502,7 +2548,7 @@ function createImageNode(media, className = "") {
     if (state.selectionMode) return;
     openAttachmentViewer(media);
   });
-  image.src = mediaUrl(media.url);
+  setMediaElementSource(image, media);
   return image;
 }
 
@@ -2520,7 +2566,7 @@ function renderMediaGroup(group) {
     });
     const image = document.createElement("img");
     image.alt = media.name || t("image");
-    image.src = mediaUrl(media.url);
+    setMediaElementSource(image, media);
     const markLoaded = () => {
       item.classList.add("media-loaded");
       if (wrapper.querySelectorAll(".image-group-item.media-loaded").length === visible.length) wrapper.classList.add("media-loaded");
@@ -2604,7 +2650,7 @@ function createCustomAudioPlayer(media) {
   player.dataset.customMedia = "true";
 
   const audio = document.createElement("audio");
-  audio.src = mediaUrl(media.url);
+  setMediaElementSource(audio, media);
   audio.preload = "metadata";
 
   const play = document.createElement("button");
@@ -2667,7 +2713,7 @@ function createVideoThumb(media) {
   button.setAttribute("aria-label", t("viewVideo"));
 
   const video = document.createElement("video");
-  video.src = mediaUrl(media.url);
+  setMediaElementSource(video, media);
   video.preload = "metadata";
   video.muted = true;
   video.playsInline = true;
@@ -2693,7 +2739,7 @@ function createCustomVideoPlayer(media) {
   player.dataset.customMedia = "true";
 
   const video = document.createElement("video");
-  video.src = mediaUrl(media.url);
+  setMediaElementSource(video, media);
   video.preload = "metadata";
   video.playsInline = true;
 
@@ -3168,7 +3214,17 @@ async function loadMe() {
       await loadUsers();
       syncPendingMessages();
       return;
-    } catch {
+    } catch (error) {
+      if (isOfflineError(error)) {
+        const cachedUser = cachedCurrentUser();
+        if (cachedUser) {
+          setAuthenticated(cachedUser);
+          setUsers(cachedUsers());
+          schedulePendingDeleteSync(0);
+          schedulePendingSync(0);
+          return;
+        }
+      }
       clearRememberSession();
     }
   }
@@ -3482,7 +3538,7 @@ function createPendingTextMessage(text, recipientId = "", options = {}) {
   };
 }
 
-function mediaFromPendingFile(file, url) {
+function mediaFromPendingFile(file, url, pendingFileId = "") {
   const kind = filePreviewKind(file);
   const mediaType = kind === "image" || kind === "video" || kind === "audio" ? kind : "document";
   return {
@@ -3491,7 +3547,8 @@ function mediaFromPendingFile(file, url) {
     name: file.name || "attachment",
     url,
     size: file.size || 0,
-    local: true
+    local: true,
+    pendingFileId
   };
 }
 
@@ -3500,7 +3557,8 @@ function createPendingMediaMessage(files, caption = "", recipientId = "", localI
   const conversationId = recipientId ? directConversationId(state.user.id, recipientId) : "general";
   const urls = files.map((file) => URL.createObjectURL(file));
   state.pendingObjectUrls.push(...urls);
-  const mediaItems = files.map((file, index) => mediaFromPendingFile(file, urls[index]));
+  const fileIds = Array.isArray(options.fileIds) ? options.fileIds : [];
+  const mediaItems = files.map((file, index) => mediaFromPendingFile(file, urls[index], fileIds[index] || ""));
   const imagesOnlyGroup = files.length > 1 && files.every((file) => filePreviewKind(file) === "image");
   return {
     id: localId,
@@ -3533,7 +3591,10 @@ async function pendingMessagesForConversation(conversationId) {
         if (file) files.push(file);
       }
       if (!files.length) continue;
-      messages.push(createPendingMediaMessage(files, item.caption || "", item.recipientId || "", item.localId, { createdAt: item.createdAt }));
+      messages.push(createPendingMediaMessage(files, item.caption || "", item.recipientId || "", item.localId, {
+        createdAt: item.createdAt,
+        fileIds: item.fileIds || []
+      }));
     } else {
       messages.push(createPendingTextMessage(item.text || "", item.recipientId || "", {
         localId: item.localId,
@@ -3701,13 +3762,9 @@ async function queuePendingMediaMessage(files, caption = "", recipientId = curre
   if (!window.indexedDB) throw new Error(t("attachmentsNeedOnline"));
   if (files.length > 10) throw new Error(t("maxAttachments"));
   const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const message = createPendingMediaMessage(files, caption, recipientId, localId);
-  const fileIds = [];
-  for (const [index, file] of files.entries()) {
-    const id = pendingFileId(localId, index);
-    await savePendingFile(id, file);
-    fileIds.push(id);
-  }
+  const fileIds = files.map((_file, index) => pendingFileId(localId, index));
+  const message = createPendingMediaMessage(files, caption, recipientId, localId, { fileIds });
+  for (const [index, file] of files.entries()) await savePendingFile(fileIds[index], file);
   const queue = pendingQueue();
   queue.push({
     kind: "media",
@@ -3885,6 +3942,7 @@ els.logoutButton.addEventListener("click", async () => {
     });
     clearRememberSession();
     localStorage.removeItem("vioraOffline:currentUser");
+    localStorage.removeItem(currentUserCacheKey());
     setAuthenticated(null);
     showToast(t("loggedOut"));
   } catch (error) {
