@@ -25,6 +25,13 @@ function mediaUrl(path) {
   return serverUrl(path);
 }
 
+function mediaUrlForElement(path, element) {
+  const url = mediaUrl(path);
+  if (!(element instanceof HTMLVideoElement) || !url || !String(url).includes("/uploads/")) return url;
+  const separator = String(url).includes("?") ? "&" : "?";
+  return `${url}${separator}vioraVideo=${Date.now().toString(36)}`;
+}
+
 const state = {
   user: null,
   users: new Map(),
@@ -675,7 +682,10 @@ async function getPendingFile(id) {
 
 function setMediaElementSource(element, media) {
   if (!element || !media) return;
-  if (media.url) element.src = mediaUrl(media.url);
+  if (media.url) {
+    element.src = mediaUrlForElement(media.url, element);
+    element.load?.();
+  }
   if (!media.pendingFileId) return;
   getPendingFile(media.pendingFileId).then((file) => {
     if (!file) return;
@@ -3210,7 +3220,9 @@ async function loadMe() {
   }
 
   try {
-    const { user, rememberToken } = await api(`/api/me?deviceId=${encodeURIComponent(state.deviceId)}`, { timeoutMs: restoredFromCache ? 2500 : 6000 });
+    const { user, rememberToken } = await api(`/api/me?deviceId=${encodeURIComponent(state.deviceId)}`, {
+      timeoutMs: restoredFromCache ? 2500 : 6000
+    });
     if (user) {
       storeRememberSession(user, rememberToken);
       setAuthenticated(user);
