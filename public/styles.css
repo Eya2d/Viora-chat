@@ -1200,12 +1200,19 @@ body.ccvve {
 }
 
 .video-player:fullscreen,
-.video-player:-webkit-full-screen {
+.video-player:-webkit-full-screen,
+.video-player.manual-fullscreen {
   width: 100vw;
   height: 100vh;
   min-height: 100vh;
   padding: 12px;
   background: #050505;
+}
+
+.video-player.manual-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
 }
 
 .video-player video {
@@ -1219,7 +1226,8 @@ body.ccvve {
 }
 
 .video-player:fullscreen video,
-.video-player:-webkit-full-screen video {
+.video-player:-webkit-full-screen video,
+.video-player.manual-fullscreen video {
   min-height: 0;
   max-height: none;
 }
