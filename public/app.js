@@ -1735,9 +1735,20 @@ function addMessage(message) {
 function upsertMessage(message) {
   if (!message?.id) return;
   if (!messageBelongsToActiveChat(message)) return;
+  const existed = state.messages.has(message.id);
   state.messages.set(message.id, message);
   cacheMessages();
-  rerenderMessages();
+  const node = existed ? els.messages.querySelector(`[data-message-id="${CSS.escape(message.id)}"]`) : null;
+  if (node) {
+    const sorted = Array.from(state.messages.values()).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    const index = sorted.findIndex((item) => item.id === message.id);
+    const previousMessage = index > 0 ? sorted[index - 1] : null;
+    node.replaceWith(buildMessageRow(message, previousMessage));
+    updateMessageSearchVisibility();
+    updateSelectionUi();
+  } else {
+    rerenderMessages();
+  }
   updateRenderedMessagesSignature();
 }
 
@@ -1748,7 +1759,13 @@ function updateMessageStatus(payload) {
   message.readAt = payload.readAt || message.readAt || null;
   state.messages.set(message.id, message);
   cacheMessages();
-  rerenderMessages();
+  const node = els.messages.querySelector(`[data-message-id="${CSS.escape(message.id)}"]`);
+  const time = node?.querySelector("time");
+  if (time) {
+    time.innerHTML = `${formatTime(message.createdAt)}${message.editedAt ? ` · ${escapeHtml(t("edited"))}` : ""}${messageTickHtml(message)}`;
+  } else {
+    rerenderMessages();
+  }
 }
 
 function shouldShowMessageTail(message, previousMessage) {
@@ -1904,7 +1921,7 @@ function closeConversationView() {
   showPage("accounts");
 }
 
-function renderMessage(message, previousMessage = null) {
+function buildMessageRow(message, previousMessage = null) {
   const row = document.createElement("div");
   const mine = message.mine || message.userId === state.user?.id;
   const hasTail = shouldShowMessageTail(message, previousMessage);
@@ -1973,7 +1990,11 @@ function renderMessage(message, previousMessage = null) {
     if (event.target.closest(".message")) return;
     openMessageRowContextMenu(event, message);
   });
-  els.messages.appendChild(row);
+  return row;
+}
+
+function renderMessage(message, previousMessage = null) {
+  els.messages.appendChild(buildMessageRow(message, previousMessage));
 }
 
 function finalizePendingMessage(localId, messages = []) {
@@ -2815,6 +2836,35 @@ function createVideoThumb(media) {
   return button;
 }
 
+function exitDesktopVideoFullscreen() {
+  document.querySelectorAll(".video-player.manual-fullscreen").forEach((el) => el.classList.remove("manual-fullscreen"));
+  document.removeEventListener("keydown", handleDesktopFullscreenEscape);
+}
+
+function handleDesktopFullscreenEscape(event) {
+  if (event.key !== "Escape") return;
+  exitDesktopVideoFullscreen();
+  window.VioraDesktop?.setFullScreen?.(false);
+}
+
+async function toggleDesktopVideoFullscreen(player) {
+  const active = player.classList.toggle("manual-fullscreen");
+  if (!active) {
+    exitDesktopVideoFullscreen();
+    await window.VioraDesktop.setFullScreen(false);
+    return;
+  }
+  document.querySelectorAll(".video-player.manual-fullscreen").forEach((el) => {
+    if (el !== player) el.classList.remove("manual-fullscreen");
+  });
+  await window.VioraDesktop.setFullScreen(true);
+  document.addEventListener("keydown", handleDesktopFullscreenEscape);
+}
+
+window.VioraDesktop?.onFullScreenChange?.((isFullScreen) => {
+  if (!isFullScreen) exitDesktopVideoFullscreen();
+});
+
 function createCustomVideoPlayer(media) {
   const player = document.createElement("div");
   player.className = "video-player";
@@ -2878,6 +2928,10 @@ function createCustomVideoPlayer(media) {
   fullscreen.addEventListener("click", async () => {
     if (state.selectionMode) return;
     try {
+      if (window.VioraDesktop?.isDesktop) {
+        await toggleDesktopVideoFullscreen(player);
+        return;
+      }
       const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
       if (fullscreenElement) {
         if (document.exitFullscreen) await document.exitFullscreen();
@@ -4408,57 +4462,3 @@ els.composer.addEventListener("submit", async (event) => {
   } catch (error) {
     showToast(error.message);
   } finally {
-    state.isSending = false;
-    els.composer.querySelector(".send-button").disabled = false;
-    els.messageInput.disabled = false;
-    els.attachButton.disabled = false;
-    if (els.recordButton) els.recordButton.disabled = false;
-  }
-});
-
-if (window.MutationObserver && els.messages) {
-  new MutationObserver(() => {
-    if (Date.now() <= state.keepScrollBottomUntil) setMessagesBottom();
-  }).observe(els.messages, { childList: true, subtree: true, attributes: true });
-}
-
-if (window.ResizeObserver && els.messages) {
-  new ResizeObserver(() => {
-    if (Date.now() <= state.keepScrollBottomUntil) setMessagesBottom();
-  }).observe(els.messages);
-}
-
-window.addEventListener("online", () => {
-  window.vioraNetworkBack();
-});
-
-window.addEventListener("offline", () => {
-  updateAccountLabel();
-  stopEvents();
-  if (!els.chatPage.classList.contains("hidden")) updateChatHeader();
-});
-
-window.addEventListener("popstate", () => {
-  if (handleAppBack()) primeBackNavigation();
-});
-
-setInterval(() => {
-  if (!state.user || state.reconnecting) return;
-  if (!state.events || state.events.readyState === EventSource.CLOSED) {
-    scheduleReconnect(100);
-  }
-}, 7000);
-
-loadMe().catch(() => {
-  const cachedUser = cachedCurrentUser();
-  if (cachedUser) {
-    setAuthenticated(cachedUser);
-    setUsers(cachedUsers());
-    schedulePendingDeleteSync(0);
-    schedulePendingSync(0);
-  } else {
-    setAuthenticated(null);
-  }
-});
-
-primeBackNavigation();
